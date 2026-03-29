@@ -1,0 +1,184 @@
+{
+  "name": "04 - Email-to-Task Pipeline",
+  "nodes": [
+    {
+      "id": "a4000000-0004-0004-0004-000000000001",
+      "name": "Email Trigger (IMAP)",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "parameters": {
+        "mailbox": "INBOX",
+        "action": "read",
+        "downloadAttachments": false,
+        "options": { "allowUnauthorizedCerts": false }
+      },
+      "credentials": { "imap": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Capture Email" } }
+    },
+    {
+      "id": "a4000000-0004-0004-0004-000000000002",
+      "name": "Clean Email Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "parameters": {
+        "jsCode": "const emailData = $input.item.json;\n\n// Extract plain text or strip HTML\nlet body = emailData.text || emailData.html || '';\nbody = body.replace(/<[^>]*>/g, ' ');\n\n// Remove common email signatures\nbody = body.split(/--|Best regards|Sent from|Thanks,|Regards,/i)[0];\n\n// Remove quoted replies\nbody = body.split(/On .* wrote:/i)[0];\n\n// Collapse whitespace\nbody = body.replace(/\\s+/g, ' ').trim();\n\n// Extract sender email\nconst senderRaw = emailData.from?.value?.[0]?.address\n  || (typeof emailData.from === 'string' ? emailData.from : '');\nconst senderEmail = senderRaw.match(/[\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,}/)?.[0] || senderRaw;\n\nreturn [{\n  json: {\n    cleanedBody: body,\n    senderEmail,\n    subject: emailData.subject || ''\n  }\n}];"
+      }
+    },
+    {
+      "id": "a4000000-0004-0004-0004-000000000003",
+      "name": "Find User by Email",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, email, timezone FROM users WHERE email = '{{ $json.senderEmail }}' LIMIT 1;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a4000000-0004-0004-0004-000000000004",
+      "name": "Known User?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a4000000-0004-0004-0004-000000000005",
+      "name": "Call NLP API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 220],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/nlp/extract",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "input": "={{ $('Clean Email Body').item.json.subject }}. {{ $('Clean Email Body').item.json.cleanedBody }}"
+        }
+      }
+    },
+    {
+      "id": "a4000000-0004-0004-0004-000000000006",
+      "name": "High Confidence?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 220],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "cond2",
+              "leftValue": "={{ $json.confidence }}",
+              "rightValue": 70,
+              "operator": { "type": "number", "operation": "gte" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a4000000-0004-0004-0004-000000000007",
+      "name": "Insert Task (Active)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1560, 160],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO tasks (user_id, title, description, due_date, due_time, priority, category, status, confidence_score, metadata)\nVALUES (\n  '{{ $('Find User by Email').item.json.id }}',\n  '{{ $json.data.title }}',\n  '{{ $('Clean Email Body').item.json.cleanedBody }}',\n  {{ $json.data.due_date ? `'${$json.data.due_date}'` : 'NULL' }},\n  {{ $json.data.due_time ? `'${$json.data.due_time}'` : 'NULL' }},\n  '{{ $json.data.priority || 'medium' }}',\n  '{{ $json.data.category || 'work' }}',\n  'active',\n  {{ $json.confidence }},\n  '{\"source\": \"email\", \"subject\": \"{{ $('Clean Email Body').item.json.subject }}\"}'\n)\nRETURNING *;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a4000000-0004-0004-0004-000000000008",
+      "name": "Insert Task (Pending Review)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1560, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO tasks (user_id, title, description, due_date, due_time, priority, category, status, confidence_score, metadata)\nVALUES (\n  '{{ $('Find User by Email').item.json.id }}',\n  '{{ $('Call NLP API').item.json.data.title }}',\n  '{{ $('Clean Email Body').item.json.cleanedBody }}',\n  {{ $('Call NLP API').item.json.data.due_date ? `'${$('Call NLP API').item.json.data.due_date}'` : 'NULL' }},\n  {{ $('Call NLP API').item.json.data.due_time ? `'${$('Call NLP API').item.json.data.due_time}'` : 'NULL' }},\n  '{{ $('Call NLP API').item.json.data.priority || 'medium' }}',\n  '{{ $('Call NLP API').item.json.data.category || 'work' }}',\n  'pending',\n  {{ $('Call NLP API').item.json.confidence }},\n  '{\"source\": \"email\", \"subject\": \"{{ $('Clean Email Body').item.json.subject }}\"}'\n)\nRETURNING *;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a4000000-0004-0004-0004-000000000009",
+      "name": "Send Confirmation Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1780, 220],
+      "parameters": {
+        "fromEmail": "tasks@intentflow.ai",
+        "toEmail": "={{ $('Clean Email Body').item.json.senderEmail }}",
+        "subject": "=✅ Task Created: {{ $json.title }}",
+        "emailFormat": "html",
+        "message": "=<html><body style=\"font-family: Arial, sans-serif; color: #333;\">\n<h2>✅ Your email was converted to a task</h2>\n<table style=\"border-collapse:collapse; width:100%; max-width:500px;\">\n  <tr style=\"background:#f3f4f6;\"><td style=\"padding:10px\"><strong>📋 Task</strong></td><td style=\"padding:10px\">{{ $json.title }}</td></tr>\n  <tr><td style=\"padding:10px\"><strong>📅 Due</strong></td><td style=\"padding:10px\">{{ $json.due_date || 'Not set' }} {{ $json.due_time || '' }}</td></tr>\n  <tr style=\"background:#f3f4f6;\"><td style=\"padding:10px\"><strong>⚡ Priority</strong></td><td style=\"padding:10px\">{{ $json.priority }}</td></tr>\n  <tr><td style=\"padding:10px\"><strong>🎯 Confidence</strong></td><td style=\"padding:10px\">{{ $json.confidence_score }}%</td></tr>\n</table>\n{{ $json.status === 'pending' ? '<p style=\"color:#f59e0b\">⚠️ Low confidence — please review this task in the app before it becomes active.</p>' : '' }}\n<p><a href=\"intentflow://task/{{ $json.id }}\">Open in IntentFlow AI</a></p>\n</body></html>"
+      },
+      "credentials": { "smtp": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow SMTP" } }
+    },
+    {
+      "id": "a4000000-0004-0004-0004-000000000010",
+      "name": "Reject Unknown Sender",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1120, 400],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Email Trigger (IMAP)": {
+      "main": [[{ "node": "Clean Email Body", "type": "main", "index": 0 }]]
+    },
+    "Clean Email Body": {
+      "main": [[{ "node": "Find User by Email", "type": "main", "index": 0 }]]
+    },
+    "Find User by Email": {
+      "main": [[{ "node": "Known User?", "type": "main", "index": 0 }]]
+    },
+    "Known User?": {
+      "main": [
+        [{ "node": "Call NLP API", "type": "main", "index": 0 }],
+        [{ "node": "Reject Unknown Sender", "type": "main", "index": 0 }]
+      ]
+    },
+    "Call NLP API": {
+      "main": [[{ "node": "High Confidence?", "type": "main", "index": 0 }]]
+    },
+    "High Confidence?": {
+      "main": [
+        [{ "node": "Insert Task (Active)", "type": "main", "index": 0 }],
+        [{ "node": "Insert Task (Pending Review)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Insert Task (Active)": {
+      "main": [[{ "node": "Send Confirmation Email", "type": "main", "index": 0 }]]
+    },
+    "Insert Task (Pending Review)": {
+      "main": [[{ "node": "Send Confirmation Email", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "a4000000-0004-0004-0004-000000000099",
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "intentflow-automation-04",
+  "tags": [{ "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z", "id": "tag-core", "name": "core" }]
+}

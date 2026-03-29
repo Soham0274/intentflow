@@ -1,0 +1,100 @@
+{
+  "name": "06 - Weekly Productivity Report",
+  "nodes": [
+    {
+      "id": "a6000000-0006-0006-0006-000000000001",
+      "name": "Monday 8 AM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 8 * * 1" }]
+        }
+      }
+    },
+    {
+      "id": "a6000000-0006-0006-0006-000000000002",
+      "name": "Get Active Users",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [460, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, email, name FROM users\nWHERE created_at < CURRENT_DATE - INTERVAL '7 days'\nORDER BY created_at ASC;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a6000000-0006-0006-0006-000000000003",
+      "name": "Loop Over Users",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 300],
+      "parameters": { "batchSize": 1, "options": {} }
+    },
+    {
+      "id": "a6000000-0006-0006-0006-000000000004",
+      "name": "Query Weekly Stats",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [900, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH stats AS (\n  SELECT\n    COUNT(*)                                                        AS total_tasks,\n    COUNT(*) FILTER (WHERE status = 'completed')                    AS completed,\n    COUNT(*) FILTER (WHERE status = 'active')                       AS still_active,\n    COUNT(*) FILTER (WHERE status = 'completed'\n                      AND completed_at IS NOT NULL\n                      AND due_date    IS NOT NULL\n                      AND completed_at::date <= due_date)           AS on_time,\n    COUNT(*) FILTER (WHERE priority = 'high')                       AS high_priority,\n    ROUND(AVG(confidence_score))                                    AS avg_confidence\n  FROM tasks\n  WHERE user_id = '{{ $json.id }}'\n    AND created_at >= CURRENT_DATE - INTERVAL '7 days'\n)\nSELECT\n  *,\n  ROUND((on_time::numeric    / NULLIF(completed,               0)) * 100) AS on_time_rate,\n  ROUND((completed::numeric  / NULLIF(total_tasks,             0)) * 100) AS completion_rate\nFROM stats;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a6000000-0006-0006-0006-000000000005",
+      "name": "Generate Insights",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300],
+      "parameters": {
+        "jsCode": "const stats = $input.item.json;\nconst user  = $('Loop Over Users').item.json;\n\nconst insights = [];\n\n// Completion rate\nif (stats.completion_rate >= 80) {\n  insights.push(`🌟 Excellent! You finished ${stats.completion_rate}% of your tasks this week.`);\n} else if (stats.completion_rate >= 60) {\n  insights.push(`👍 Good progress — ${stats.completion_rate}% of tasks completed.`);\n} else if (stats.total_tasks > 0) {\n  insights.push(`💪 Only ${stats.completion_rate}% completed. Consider breaking big tasks into smaller ones.`);\n}\n\n// On-time rate\nif (stats.on_time_rate >= 90) {\n  insights.push(`⏰ Outstanding punctuality — ${stats.on_time_rate}% completed on time.`);\n} else if (stats.on_time_rate !== null && stats.on_time_rate < 70) {\n  insights.push(`📅 ${stats.on_time_rate}% on-time rate. Try setting more realistic deadlines.`);\n}\n\n// AI confidence\nif (stats.avg_confidence !== null && stats.avg_confidence < 75) {\n  insights.push('💭 Your task descriptions could be more specific — this helps the AI extract better data.');\n}\n\n// Volume\nif (stats.total_tasks === 0) {\n  insights.push('🚀 No tasks logged this week. Try capturing even small to-dos!');\n} else if (stats.total_tasks >= 20) {\n  insights.push(`📈 High-volume week — ${stats.total_tasks} tasks created. Great hustle!`);\n}\n\nreturn [{\n  json: {\n    user_id:         user.id,\n    user_name:       user.name || 'there',\n    user_email:      user.email,\n    total_tasks:     stats.total_tasks     || 0,\n    completed:       stats.completed       || 0,\n    still_active:    stats.still_active    || 0,\n    on_time_rate:    stats.on_time_rate    || 0,\n    completion_rate: stats.completion_rate || 0,\n    high_priority:   stats.high_priority   || 0,\n    avg_confidence:  stats.avg_confidence  || 0,\n    insights\n  }\n}];"
+      }
+    },
+    {
+      "id": "a6000000-0006-0006-0006-000000000006",
+      "name": "Send Weekly Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1340, 300],
+      "parameters": {
+        "fromEmail": "reports@intentflow.ai",
+        "toEmail": "={{ $json.user_email }}",
+        "subject": "=📊 Your Weekly Productivity Report — IntentFlow AI",
+        "emailFormat": "html",
+        "message": "=<html><body style=\"font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;\">\n<h1 style=\"color:#2563eb\">📊 Week in Review</h1>\n<p>Hi {{ $json.user_name }}, here's how your week went:</p>\n\n<table style=\"width:100%; border-collapse:collapse; margin: 20px 0;\">\n  <tr style=\"background:#eff6ff\">\n    <td style=\"padding:12px; border:1px solid #dbeafe\">✅ Completed</td>\n    <td style=\"padding:12px; border:1px solid #dbeafe; font-weight:bold; font-size:18px\">{{ $json.completed }} / {{ $json.total_tasks }}</td>\n  </tr>\n  <tr>\n    <td style=\"padding:12px; border:1px solid #e5e7eb\">📝 Still Active</td>\n    <td style=\"padding:12px; border:1px solid #e5e7eb\">{{ $json.still_active }}</td>\n  </tr>\n  <tr style=\"background:#eff6ff\">\n    <td style=\"padding:12px; border:1px solid #dbeafe\">⏰ On-Time Rate</td>\n    <td style=\"padding:12px; border:1px solid #dbeafe; font-weight:bold\">{{ $json.on_time_rate }}%</td>\n  </tr>\n  <tr>\n    <td style=\"padding:12px; border:1px solid #e5e7eb\">🎯 Completion Rate</td>\n    <td style=\"padding:12px; border:1px solid #e5e7eb; font-weight:bold\">{{ $json.completion_rate }}%</td>\n  </tr>\n  <tr style=\"background:#eff6ff\">\n    <td style=\"padding:12px; border:1px solid #dbeafe\">🔴 High Priority</td>\n    <td style=\"padding:12px; border:1px solid #dbeafe\">{{ $json.high_priority }}</td>\n  </tr>\n</table>\n\n<h3>💡 Insights</h3>\n<ul style=\"line-height:1.8\">\n  {{ $json.insights.map(i => `<li>${i}</li>`).join('\\n') }}\n</ul>\n\n<p style=\"margin-top:24px\">Keep it up! 🚀<br/><em>— The IntentFlow AI Team</em></p>\n<hr style=\"margin-top:32px; border:none; border-top:1px solid #e5e7eb\"/>\n<p style=\"font-size:11px; color:#9ca3af\">You're receiving this because you have an IntentFlow AI account. <a href=\"intentflow://settings/notifications\">Unsubscribe</a></p>\n</body></html>"
+      },
+      "credentials": { "smtp": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow SMTP" } }
+    }
+  ],
+  "connections": {
+    "Monday 8 AM Trigger": {
+      "main": [[{ "node": "Get Active Users", "type": "main", "index": 0 }]]
+    },
+    "Get Active Users": {
+      "main": [[{ "node": "Loop Over Users", "type": "main", "index": 0 }]]
+    },
+    "Loop Over Users": {
+      "main": [[{ "node": "Query Weekly Stats", "type": "main", "index": 0 }]]
+    },
+    "Query Weekly Stats": {
+      "main": [[{ "node": "Generate Insights", "type": "main", "index": 0 }]]
+    },
+    "Generate Insights": {
+      "main": [[{ "node": "Send Weekly Email", "type": "main", "index": 0 }]]
+    },
+    "Send Weekly Email": {
+      "main": [[{ "node": "Loop Over Users", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "a6000000-0006-0006-0006-000000000099",
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "intentflow-automation-06",
+  "tags": [{ "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z", "id": "tag-core", "name": "core" }]
+}

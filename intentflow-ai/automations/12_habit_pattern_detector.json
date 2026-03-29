@@ -1,0 +1,170 @@
+{
+  "name": "12 - Habit Pattern Detector",
+  "nodes": [
+    {
+      "id": "ac000000-0012-0012-0012-000000000001",
+      "name": "Weekly Sunday Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 20 * * 0" }]
+        }
+      }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000002",
+      "name": "Get Active Users",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [460, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, email, name FROM users WHERE created_at < CURRENT_DATE - INTERVAL '28 days';"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000003",
+      "name": "Loop Over Users",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 300],
+      "parameters": { "batchSize": 1, "options": {} }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000004",
+      "name": "Query Task Patterns",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [900, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  LOWER(title) AS normalized_title,\n  COUNT(*)     AS occurrence_count,\n  MIN(created_at) AS first_seen,\n  MAX(created_at) AS last_seen,\n  ARRAY_AGG(DISTINCT EXTRACT(DOW FROM created_at)::int ORDER BY 1) AS days_of_week,\n  ROUND(AVG(EXTRACT(HOUR FROM created_at::time))) AS avg_hour\nFROM tasks\nWHERE user_id = '{{ $json.id }}'\n  AND created_at >= CURRENT_DATE - INTERVAL '28 days'\nGROUP BY LOWER(title)\nHAVING COUNT(*) >= 3\nORDER BY occurrence_count DESC\nLIMIT 20;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000005",
+      "name": "Has Patterns?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 300],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000006",
+      "name": "AI Pattern Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 220],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENAI_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\n  \"model\": \"gpt-4\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a habit detection AI. Given a list of frequently recurring task titles with their day-of-week patterns, suggest which ones could be converted to recurring task templates. Day of week: 0=Sunday, 1=Monday ... 6=Saturday. Return ONLY JSON: {\\\"habits\\\": [{\\\"title\\\": \\\"suggested template name\\\", \\\"frequency\\\": \\\"daily|weekly|weekdays|weekends\\\", \\\"suggested_days\\\": [0-6], \\\"confidence\\\": 0-100, \\\"reason\\\": \\\"brief explanation\\\"}]}\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Task patterns: {{ JSON.stringify($json) }}\"\n    }\n  ],\n  \"response_format\": { \"type\": \"json_object\" },\n  \"temperature\": 0.3\n}"
+      }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000007",
+      "name": "Parse Habits",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 220],
+      "parameters": {
+        "jsCode": "const content = $input.item.json.choices[0].message.content;\nlet parsed;\ntry { parsed = typeof content === 'string' ? JSON.parse(content) : content; }\ncatch (e) { return [{ json: { habits: [] } }]; }\n\n// Only suggest habits with ≥70% confidence\nconst highConfidence = (parsed.habits || []).filter(h => h.confidence >= 70);\nreturn [{ json: { habits: highConfidence } }];"
+      }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000008",
+      "name": "Store Habit Suggestions",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1780, 220],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO habit_suggestions (user_id, habits_json, suggested_at, status)\nVALUES (\n  '{{ $('Loop Over Users').item.json.id }}',\n  '{{ JSON.stringify($json.habits) }}'::jsonb,\n  NOW(),\n  'pending'\n);"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000009",
+      "name": "Notify User",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 220],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/notifications/send",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "user_id": "={{ $('Loop Over Users').item.json.id }}",
+          "message": "=🔄 We spotted {{ $('Parse Habits').item.json.habits.length }} recurring habit{{ $('Parse Habits').item.json.habits.length > 1 ? 's' : '' }}. Want to turn them into templates?",
+          "type": "habit_suggestion",
+          "data": "={{ JSON.stringify($('Parse Habits').item.json.habits) }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Weekly Sunday Trigger": {
+      "main": [[{ "node": "Get Active Users", "type": "main", "index": 0 }]]
+    },
+    "Get Active Users": {
+      "main": [[{ "node": "Loop Over Users", "type": "main", "index": 0 }]]
+    },
+    "Loop Over Users": {
+      "main": [[{ "node": "Query Task Patterns", "type": "main", "index": 0 }]]
+    },
+    "Query Task Patterns": {
+      "main": [[{ "node": "Has Patterns?", "type": "main", "index": 0 }]]
+    },
+    "Has Patterns?": {
+      "main": [
+        [{ "node": "AI Pattern Analysis", "type": "main", "index": 0 }]
+      ]
+    },
+    "AI Pattern Analysis": {
+      "main": [[{ "node": "Parse Habits", "type": "main", "index": 0 }]]
+    },
+    "Parse Habits": {
+      "main": [[{ "node": "Store Habit Suggestions", "type": "main", "index": 0 }]]
+    },
+    "Store Habit Suggestions": {
+      "main": [[{ "node": "Notify User", "type": "main", "index": 0 }]]
+    },
+    "Notify User": {
+      "main": [[{ "node": "Loop Over Users", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "ac000000-0012-0012-0012-000000000099",
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "intentflow-automation-12",
+  "tags": [{ "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z", "id": "tag-advanced", "name": "advanced" }]
+}

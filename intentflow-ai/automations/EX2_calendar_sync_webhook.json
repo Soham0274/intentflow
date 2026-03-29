@@ -1,0 +1,192 @@
+{
+  "name": "EX2 - Calendar Sync Webhook",
+  "nodes": [
+    {
+      "id": "ex200000-ex02-ex02-ex02-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "calendar-sync",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "ex200000-ex02-ex02-ex02-000000000002",
+      "name": "Validate Secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.headers['x-webhook-secret'] }}",
+              "rightValue": "={{ $env.N8N_WEBHOOK_SECRET }}",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ex200000-ex02-ex02-ex02-000000000003",
+      "name": "Has Due Date?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 220],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "cond2",
+              "leftValue": "={{ $json.body.data.due_date }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ex200000-ex02-ex02-ex02-000000000004",
+      "name": "Check Existing Event",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [900, 160],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT calendar_event_id FROM tasks WHERE id = '{{ $json.body.data.task_id }}';"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "ex200000-ex02-ex02-ex02-000000000005",
+      "name": "Event Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 160],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "cond3",
+              "leftValue": "={{ $json.calendar_event_id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ex200000-ex02-ex02-ex02-000000000006",
+      "name": "Create Calendar Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [1340, 100],
+      "parameters": {
+        "operation": "create",
+        "calendar": { "__rl": true, "value": "primary", "mode": "id" },
+        "start": "={{ $('Webhook Trigger').item.json.body.data.due_date }}T{{ $('Webhook Trigger').item.json.body.data.due_time || '09:00' }}:00",
+        "end":   "={{ $('Webhook Trigger').item.json.body.data.due_date }}T{{ ($('Webhook Trigger').item.json.body.data.due_time || '09:00').split(':').map((v,i) => i===0 ? String(parseInt(v)+1).padStart(2,'0') : v).join(':') }}:00",
+        "additionalFields": {
+          "summary":     "={{ $('Webhook Trigger').item.json.body.data.title }}",
+          "description": "=Created by IntentFlow AI\nTask ID: {{ $('Webhook Trigger').item.json.body.data.task_id }}"
+        }
+      },
+      "credentials": { "googleCalendarOAuth2Api": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "Google Calendar" } }
+    },
+    {
+      "id": "ex200000-ex02-ex02-ex02-000000000007",
+      "name": "Update Calendar Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [1340, 240],
+      "parameters": {
+        "operation": "update",
+        "calendar": { "__rl": true, "value": "primary", "mode": "id" },
+        "eventId": "={{ $('Check Existing Event').item.json.calendar_event_id }}",
+        "updateFields": {
+          "start":   "={{ $('Webhook Trigger').item.json.body.data.due_date }}T{{ $('Webhook Trigger').item.json.body.data.due_time || '09:00' }}:00",
+          "end":     "={{ $('Webhook Trigger').item.json.body.data.due_date }}T{{ ($('Webhook Trigger').item.json.body.data.due_time || '09:00').split(':').map((v,i) => i===0 ? String(parseInt(v)+1).padStart(2,'0') : v).join(':') }}:00",
+          "summary": "={{ $('Webhook Trigger').item.json.body.data.title }}"
+        }
+      },
+      "credentials": { "googleCalendarOAuth2Api": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "Google Calendar" } }
+    },
+    {
+      "id": "ex200000-ex02-ex02-ex02-000000000008",
+      "name": "Save Calendar Event ID",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1560, 160],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE tasks SET calendar_event_id = '{{ $json.id }}' WHERE id = '{{ $('Webhook Trigger').item.json.body.data.task_id }}';"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "ex200000-ex02-ex02-ex02-000000000009",
+      "name": "No Date — Skip",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [680, 420],
+      "parameters": {}
+    },
+    {
+      "id": "ex200000-ex02-ex02-ex02-000000000010",
+      "name": "Unauthorized",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [680, 560],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Validate Secret", "type": "main", "index": 0 }]]
+    },
+    "Validate Secret": {
+      "main": [
+        [{ "node": "Has Due Date?", "type": "main", "index": 0 }],
+        [{ "node": "Unauthorized", "type": "main", "index": 0 }]
+      ]
+    },
+    "Has Due Date?": {
+      "main": [
+        [{ "node": "Check Existing Event", "type": "main", "index": 0 }],
+        [{ "node": "No Date — Skip", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check Existing Event": {
+      "main": [[{ "node": "Event Exists?", "type": "main", "index": 0 }]]
+    },
+    "Event Exists?": {
+      "main": [
+        [{ "node": "Update Calendar Event", "type": "main", "index": 0 }],
+        [{ "node": "Create Calendar Event", "type": "main", "index": 0 }]
+      ]
+    },
+    "Create Calendar Event": {
+      "main": [[{ "node": "Save Calendar Event ID", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "ex200000-ex02-ex02-ex02-000000000099",
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "intentflow-automation-ex2",
+  "tags": [{ "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z", "id": "tag-extra", "name": "extra" }]
+}

@@ -1,0 +1,139 @@
+{
+  "name": "03 - Smart Reminder System",
+  "nodes": [
+    {
+      "id": "a3000000-0003-0003-0003-000000000001",
+      "name": "Hourly Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 * * * *" }]
+        }
+      }
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000002",
+      "name": "Query Tasks Due in 2–3 Hours",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [460, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  t.id,\n  t.user_id,\n  t.title,\n  t.due_date,\n  t.due_time,\n  u.timezone,\n  u.notification_settings\nFROM tasks t\nJOIN users u ON t.user_id = u.id\nWHERE t.status = 'active'\n  AND t.due_date = CURRENT_DATE\n  AND t.due_time IS NOT NULL\n  AND t.due_time BETWEEN\n    (CURRENT_TIME AT TIME ZONE COALESCE(u.timezone, 'UTC')) + INTERVAL '2 hours'\n    AND (CURRENT_TIME AT TIME ZONE COALESCE(u.timezone, 'UTC')) + INTERVAL '3 hours'\n  AND (\n    t.last_reminded_at IS NULL\n    OR t.last_reminded_at::date < CURRENT_DATE\n  );"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000003",
+      "name": "Filter Quiet Hours",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst filtered = items.filter(item => {\n  let settings;\n  try {\n    settings = typeof item.json.notification_settings === 'string'\n      ? JSON.parse(item.json.notification_settings)\n      : item.json.notification_settings || {};\n  } catch (e) {\n    return true; // If settings unreadable, allow notification\n  }\n\n  if (!settings.quiet_hours?.enabled) return true;\n\n  const now = new Date();\n  const hour = now.getHours();\n  const start = parseInt((settings.quiet_hours.start || '22').split(':')[0]);\n  const end   = parseInt((settings.quiet_hours.end   || '07').split(':')[0]);\n\n  // Quiet hours span midnight (e.g. 22:00–07:00)\n  if (start > end) {\n    return hour < start && hour >= end;\n  }\n  // Normal window\n  return hour < start || hour >= end;\n});\n\nreturn filtered;"
+      }
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000004",
+      "name": "Has Tasks to Remind?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000005",
+      "name": "Loop Over Reminders",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1120, 220],
+      "parameters": { "batchSize": 1, "options": {} }
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000006",
+      "name": "Send Reminder Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 220],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/notifications/send",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "user_id": "={{ $json.user_id }}",
+          "task_id": "={{ $json.id }}",
+          "message": "=⏰ Reminder: '{{ $json.title }}' is due at {{ $json.due_time }}",
+          "type": "reminder"
+        }
+      }
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000007",
+      "name": "Mark as Reminded",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1560, 220],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE tasks SET last_reminded_at = NOW() WHERE id = '{{ $('Loop Over Reminders').item.json.id }}';"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000008",
+      "name": "Nothing to Remind — Stop",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1120, 400],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Hourly Trigger": {
+      "main": [[{ "node": "Query Tasks Due in 2–3 Hours", "type": "main", "index": 0 }]]
+    },
+    "Query Tasks Due in 2–3 Hours": {
+      "main": [[{ "node": "Filter Quiet Hours", "type": "main", "index": 0 }]]
+    },
+    "Filter Quiet Hours": {
+      "main": [[{ "node": "Has Tasks to Remind?", "type": "main", "index": 0 }]]
+    },
+    "Has Tasks to Remind?": {
+      "main": [
+        [{ "node": "Loop Over Reminders", "type": "main", "index": 0 }],
+        [{ "node": "Nothing to Remind — Stop", "type": "main", "index": 0 }]
+      ]
+    },
+    "Loop Over Reminders": {
+      "main": [[{ "node": "Send Reminder Notification", "type": "main", "index": 0 }]]
+    },
+    "Send Reminder Notification": {
+      "main": [[{ "node": "Mark as Reminded", "type": "main", "index": 0 }]]
+    },
+    "Mark as Reminded": {
+      "main": [[{ "node": "Loop Over Reminders", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "a3000000-0003-0003-0003-000000000099",
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "intentflow-automation-03",
+  "tags": [{ "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z", "id": "tag-core", "name": "core" }]
+}

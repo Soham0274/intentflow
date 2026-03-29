@@ -1,0 +1,126 @@
+{
+  "name": "02 - Daily Overdue Task Scanner",
+  "nodes": [
+    {
+      "id": "a2000000-0002-0002-0002-000000000001",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 6 * * *" }]
+        }
+      }
+    },
+    {
+      "id": "a2000000-0002-0002-0002-000000000002",
+      "name": "Query Overdue Tasks",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [460, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  t.id,\n  t.user_id,\n  t.title,\n  t.due_date,\n  t.priority,\n  CURRENT_DATE - t.due_date AS days_overdue\nFROM tasks t\nWHERE t.due_date < CURRENT_DATE\n  AND t.status = 'active'\n  AND (\n    t.last_notified_at IS NULL\n    OR t.last_notified_at::date < CURRENT_DATE\n  )\nORDER BY t.due_date ASC;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a2000000-0002-0002-0002-000000000003",
+      "name": "Has Overdue Tasks?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a2000000-0002-0002-0002-000000000004",
+      "name": "Loop Over Overdue Tasks",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [900, 220],
+      "parameters": { "batchSize": 1, "options": {} }
+    },
+    {
+      "id": "a2000000-0002-0002-0002-000000000005",
+      "name": "Send Overdue Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 220],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/notifications/send",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "user_id": "={{ $json.user_id }}",
+          "task_id": "={{ $json.id }}",
+          "message": "=⚠️ Task overdue ({{ $json.days_overdue }} day{{ $json.days_overdue > 1 ? 's' : '' }}): {{ $json.title }}",
+          "type": "overdue"
+        }
+      }
+    },
+    {
+      "id": "a2000000-0002-0002-0002-000000000006",
+      "name": "Escalate Priority",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1340, 220],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE tasks\nSET\n  priority = CASE\n    WHEN priority = 'low'    THEN 'medium'\n    WHEN priority = 'medium' THEN 'high'\n    ELSE 'high'\n  END,\n  last_notified_at = NOW()\nWHERE id = '{{ $('Loop Over Overdue Tasks').item.json.id }}';"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a2000000-0002-0002-0002-000000000007",
+      "name": "No Overdue Tasks — Stop",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [900, 400],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [[{ "node": "Query Overdue Tasks", "type": "main", "index": 0 }]]
+    },
+    "Query Overdue Tasks": {
+      "main": [[{ "node": "Has Overdue Tasks?", "type": "main", "index": 0 }]]
+    },
+    "Has Overdue Tasks?": {
+      "main": [
+        [{ "node": "Loop Over Overdue Tasks", "type": "main", "index": 0 }],
+        [{ "node": "No Overdue Tasks — Stop", "type": "main", "index": 0 }]
+      ]
+    },
+    "Loop Over Overdue Tasks": {
+      "main": [[{ "node": "Send Overdue Notification", "type": "main", "index": 0 }]]
+    },
+    "Send Overdue Notification": {
+      "main": [[{ "node": "Escalate Priority", "type": "main", "index": 0 }]]
+    },
+    "Escalate Priority": {
+      "main": [[{ "node": "Loop Over Overdue Tasks", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "a2000000-0002-0002-0002-000000000099",
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "intentflow-automation-02",
+  "tags": [{ "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z", "id": "tag-core", "name": "core" }]
+}

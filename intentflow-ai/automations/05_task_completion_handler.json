@@ -1,0 +1,222 @@
+{
+  "name": "05 - Task Completion Handler",
+  "nodes": [
+    {
+      "id": "a5000000-0005-0005-0005-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "task-completed",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000002",
+      "name": "Validate Secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.headers['x-webhook-secret'] }}",
+              "rightValue": "={{ $env.N8N_WEBHOOK_SECRET }}",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000003",
+      "name": "Find Dependent Tasks",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 220],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, user_id, title FROM tasks\nWHERE blocked_by_task_id = '{{ $json.body.data.task_id }}'\n  AND status = 'pending';"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000004",
+      "name": "Has Blocked Tasks?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 220],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "cond2",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000005",
+      "name": "Unblock Dependent Tasks",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1120, 160],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE tasks\nSET status = 'active', blocked_by_task_id = NULL\nWHERE blocked_by_task_id = '{{ $('Webhook Trigger').item.json.body.data.task_id }}';"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000006",
+      "name": "Notify Unblocked",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 160],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/notifications/send",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "user_id": "={{ $('Webhook Trigger').item.json.body.user_id }}",
+          "message": "=🔓 A blocked task is now ready: {{ $('Find Dependent Tasks').item.json.title }}",
+          "type": "unblocked"
+        }
+      }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000007",
+      "name": "Update Project Progress",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1120, 320],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE projects\nSET completed_tasks = completed_tasks + 1\nWHERE id = (\n  SELECT project_id FROM tasks WHERE id = '{{ $('Webhook Trigger').item.json.body.data.task_id }}'\n)\n  AND id IS NOT NULL;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000008",
+      "name": "Count Today Completions",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1340, 320],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) AS completed_today\nFROM tasks\nWHERE user_id = '{{ $('Webhook Trigger').item.json.body.user_id }}'\n  AND status = 'completed'\n  AND completed_at::date = CURRENT_DATE;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000009",
+      "name": "Streak Milestone?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1560, 320],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "cond3",
+              "leftValue": "={{ $json.completed_today }}",
+              "rightValue": 3,
+              "operator": { "type": "number", "operation": "gte" }
+            },
+            {
+              "id": "cond4",
+              "leftValue": "={{ $json.completed_today % 3 }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000010",
+      "name": "Send Celebration",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 280],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/notifications/send",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "user_id": "={{ $('Webhook Trigger').item.json.body.user_id }}",
+          "message": "=🎉 You're on fire! {{ $('Count Today Completions').item.json.completed_today }} tasks completed today!",
+          "type": "celebration"
+        }
+      }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000011",
+      "name": "Unauthorized",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [680, 440],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Validate Secret", "type": "main", "index": 0 }]]
+    },
+    "Validate Secret": {
+      "main": [
+        [{ "node": "Find Dependent Tasks", "type": "main", "index": 0 }],
+        [{ "node": "Unauthorized", "type": "main", "index": 0 }]
+      ]
+    },
+    "Find Dependent Tasks": {
+      "main": [[{ "node": "Has Blocked Tasks?", "type": "main", "index": 0 }]]
+    },
+    "Has Blocked Tasks?": {
+      "main": [
+        [{ "node": "Unblock Dependent Tasks", "type": "main", "index": 0 }],
+        [{ "node": "Update Project Progress", "type": "main", "index": 0 }]
+      ]
+    },
+    "Unblock Dependent Tasks": {
+      "main": [[{ "node": "Notify Unblocked", "type": "main", "index": 0 }]]
+    },
+    "Notify Unblocked": {
+      "main": [[{ "node": "Update Project Progress", "type": "main", "index": 0 }]]
+    },
+    "Update Project Progress": {
+      "main": [[{ "node": "Count Today Completions", "type": "main", "index": 0 }]]
+    },
+    "Count Today Completions": {
+      "main": [[{ "node": "Streak Milestone?", "type": "main", "index": 0 }]]
+    },
+    "Streak Milestone?": {
+      "main": [
+        [{ "node": "Send Celebration", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "a5000000-0005-0005-0005-000000000099",
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "intentflow-automation-05",
+  "tags": [{ "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z", "id": "tag-core", "name": "core" }]
+}

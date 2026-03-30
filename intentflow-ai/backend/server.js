@@ -1,52 +1,89 @@
+/**
+ * IntentFlow AI — Backend Server
+ * Production-hardened Express server with proper middleware stack
+ */
+
 require('dotenv').config();
-console.log('GEMINI KEY LOADED:', process.env.GEMINI_API_KEY ? 
-  process.env.GEMINI_API_KEY.substring(0, 8) + '...' : 'NOT FOUND');
+
+// ─── Validate environment before anything else ───────────────────────────────
+const validateEnv = require('./config/envValidator');
+validateEnv();
+
 const express = require('express');
 const app = express();
 
-// Middleware
+// ─── Middleware Stack (ORDER MATTERS) ─────────────────────────────────────────
+const requestLogger = require('./middleware/requestLogger');
+const { apiLimiter, nlpLimiter } = require('./middleware/rateLimiter');
+const authMiddleware = require('./middleware/auth');
+const errorHandler = require('./middleware/errorHandler');
+
+// 1. Parse JSON bodies
 app.use(express.json());
 
-// Routes
-const nlpModule = require('./services/nlp');
-console.log('NLP Module loaded:', nlpModule);
-const { extractTaskIntent } = nlpModule;
+// 2. Log all incoming requests
+app.use(requestLogger);
 
-const taskRoutes = require('./routes/tasks.routes');
-app.use('/api/tasks', taskRoutes);
+// 3. Rate limiting (before auth to block spam)
+app.use('/api', apiLimiter);
 
-const hitlRoutes = require('./routes/hitl.routes');
-app.use('/api/hitl', hitlRoutes);
+// ─── Public Routes (no auth required) ─────────────────────────────────────────
 
+// Health check endpoint (for Railway / monitoring)
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    version: process.env.npm_package_version || '1.0.0',
+  });
+});
+
+// Auth routes (OAuth flow — must be public)
 const authRouter = require('./routes/auth.routes');
 app.use('/auth', authRouter);
 
-app.get('/test-db', async (req, res) => {
-  const supabase = require('./config/supabase');
-  const { data, error } = await supabase.from('tasks').select('count');
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true, message: 'Database connected!' });
+// ─── Protected Routes (auth required) ─────────────────────────────────────────
+
+// 4. Auth middleware protects all /api routes
+app.use('/api', authMiddleware);
+
+// Task routes
+const taskRoutes = require('./routes/tasks.routes');
+app.use('/api/tasks', taskRoutes);
+
+// HITL routes (with stricter rate limiting for NLP-heavy endpoints)
+const hitlRoutes = require('./routes/hitl.routes');
+app.use('/api/hitl', hitlRoutes);
+
+// NLP extraction endpoint (with NLP rate limiter)
+const taskService = require('./services/taskService');
+app.post('/api/nlp/extract', nlpLimiter, async (req, res, next) => {
+  try {
+    const result = await taskService.processNLPInput(req.body.input);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
 });
 
-app.post('/api/nlp/extract', async (req, res) => {
-  const { input } = req.body;
-
-  if (!input || input.trim().length === 0) {
-    return res.status(400).json({ error: 'Input text is required' });
-  }
-
-  if (input.length > 500) {
-    return res.status(400).json({ error: 'Input too long — max 500 characters' });
-  }
-
-  const result = await extractTaskIntent(input.trim());
-
-  if (!result.success) {
-    return res.status(500).json({ error: 'NLP extraction failed', details: result.error });
-  }
-
-  res.json(result);
-
+// ─── 404 Handler ──────────────────────────────────────────────────────────────
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: `Route ${req.method} ${req.originalUrl} not found`,
+  });
 });
 
-app.listen(process.env.PORT || 3001, () => console.log('Server running on port ' + (process.env.PORT || 3001)));
+// ─── Error Handler (MUST be last) ─────────────────────────────────────────────
+app.use(errorHandler);
+
+// ─── Start Server ─────────────────────────────────────────────────────────────
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log('═══════════════════════════════════════════');
+  console.log(`🚀 IntentFlow AI Backend running on port ${PORT}`);
+  console.log(`📡 Health check: http://localhost:${PORT}/health`);
+  console.log(`🔒 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log('═══════════════════════════════════════════');
+});

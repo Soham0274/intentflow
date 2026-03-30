@@ -5,28 +5,34 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   useFonts,
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
-} from '@expo-google-fonts/inter';
-import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono';
+  DMSans_400Regular,
+  DMSans_500Medium,
+  DMSans_700Bold,
+  DMSans_800ExtraBold,
+} from '@expo-google-fonts/dm-sans';
+import {
+  Syne_600SemiBold,
+  Syne_700Bold,
+  Syne_800ExtraBold,
+} from '@expo-google-fonts/syne';
 
 export { ErrorBoundary } from 'expo-router';
 
 export const unstable_settings = {
-  initialRouteName: 'onboarding',
+  initialRouteName: '(tabs)',
 };
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
-    JetBrainsMono_400Regular,
+    DMSans_400Regular,
+    DMSans_500Medium,
+    DMSans_700Bold,
+    DMSans_800ExtraBold,
+    Syne_600SemiBold,
+    Syne_700Bold,
+    Syne_800ExtraBold,
   });
 
   useEffect(() => {
@@ -47,6 +53,13 @@ export default function RootLayout() {
         <Stack.Screen name="login" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="task/[id]" />
+        
+        {/* Modals & Stack Screens */}
+        <Stack.Screen name="profile" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="error" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="review" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="confirm" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="ambiguity" options={{ presentation: 'modal' }} />
         <Stack.Screen name="+not-found" />
       </Stack>
     </SafeAreaProvider>

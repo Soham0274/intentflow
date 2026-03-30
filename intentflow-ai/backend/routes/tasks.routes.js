@@ -1,111 +1,87 @@
+/**
+ * Task Routes — IntentFlow AI
+ * Thin route handlers delegating to taskService
+ */
+
 const express = require('express');
 const router = express.Router();
-const supabase = require('../config/supabase');
+const taskService = require('../services/taskService');
 
-// GET all tasks for a user
-router.get('/', async (req, res) => {
-  const { user_id } = req.query;
-  if (!user_id) return res.status(400).json({ error: 'user_id required' });
-
-  const { data, error } = await supabase
-    .from('tasks')
-    .select('*')
-    .eq('user_id', user_id)
-    .neq('status', 'completed')
-    .order('created_at', { ascending: false });
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true, tasks: data });
-});
-
-// GET single task
-router.get('/:id', async (req, res) => {
-  const { data, error } = await supabase
-    .from('tasks')
-    .select('*')
-    .eq('id', req.params.id)
-    .single();
-
-  if (error) return res.status(404).json({ error: 'Task not found' });
-  res.json({ success: true, task: data });
-});
-
-// POST create task
-router.post('/', async (req, res) => {
-  const {
-    user_id, title, description,
-    due_date, due_time, priority,
-    category, confidence_score, metadata
-  } = req.body;
-
-  if (!user_id || !title) {
-    return res.status(400).json({ error: 'user_id and title are required' });
+// GET /api/tasks — Get all tasks for authenticated user
+router.get('/', async (req, res, next) => {
+  try {
+    const tasks = await taskService.getUserTasks(req.user.id);
+    res.json({ success: true, tasks });
+  } catch (err) {
+    next(err);
   }
+});
 
-  const { data, error } = await supabase
-    .from('tasks')
-    .insert({
-      user_id,
+// GET /api/tasks/:id — Get single task
+router.get('/:id', async (req, res, next) => {
+  try {
+    const task = await taskService.getTask(req.params.id);
+    res.json({ success: true, task });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/tasks — Create task
+router.post('/', async (req, res, next) => {
+  try {
+    const { title, description, due_date, due_time, priority, category, confidence_score, metadata } = req.body;
+
+    if (!title) {
+      return res.status(400).json({ success: false, error: 'title is required' });
+    }
+
+    const task = await taskService.createTaskFromData(req.user.id, {
       title,
-      description:      description || null,
-      due_date:         due_date    || null,
-      due_time:         due_time    || null,
-      priority:         priority    || 'medium',
-      category:         category    || 'work',
-      status:           'active',
-      confidence_score: confidence_score || null,
-      metadata:         metadata    || null,
-    })
-    .select()
-    .single();
+      description,
+      due_date,
+      due_time,
+      priority,
+      category,
+    }, {
+      confidence: confidence_score,
+      source: 'manual',
+    });
 
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true, task: data });
+    res.json({ success: true, task });
+  } catch (err) {
+    next(err);
+  }
 });
 
-// PUT update task
-router.put('/:id', async (req, res) => {
-  const updates = req.body;
-  delete updates.id;
-  delete updates.user_id;
-  delete updates.created_at;
-
-  const { data, error } = await supabase
-    .from('tasks')
-    .update(updates)
-    .eq('id', req.params.id)
-    .select()
-    .single();
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true, task: data });
+// PUT /api/tasks/:id — Update task
+router.put('/:id', async (req, res, next) => {
+  try {
+    const task = await taskService.updateTask(req.params.id, req.body);
+    res.json({ success: true, task });
+  } catch (err) {
+    next(err);
+  }
 });
 
-// PATCH complete task
-router.patch('/:id/complete', async (req, res) => {
-  const { data, error } = await supabase
-    .from('tasks')
-    .update({
-      status:       'completed',
-      completed_at: new Date().toISOString()
-    })
-    .eq('id', req.params.id)
-    .select()
-    .single();
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true, task: data });
+// PATCH /api/tasks/:id/complete — Complete task
+router.patch('/:id/complete', async (req, res, next) => {
+  try {
+    const task = await taskService.completeTask(req.params.id);
+    res.json({ success: true, task });
+  } catch (err) {
+    next(err);
+  }
 });
 
-// DELETE task
-router.delete('/:id', async (req, res) => {
-  const { error } = await supabase
-    .from('tasks')
-    .delete()
-    .eq('id', req.params.id);
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true, message: 'Task deleted' });
+// DELETE /api/tasks/:id — Delete task
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const result = await taskService.deleteTask(req.params.id);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

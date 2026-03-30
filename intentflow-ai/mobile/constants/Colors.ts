@@ -1,19 +1,55 @@
-const tintColorLight = '#2f95dc';
-const tintColorDark = '#fff';
+const tintColorLight = '#6C5FEF';
+const tintColorDark = '#7C6FFF';
 
 export default {
   light: {
-    text: '#000',
-    background: '#fff',
+    text: '#0D0F1A',
+    textSecondary: '#6B7080',
+    textMuted: '#A0A5B5',
+    background: '#F0F1F7',
+    surface: '#FFFFFF',
+    card: '#FFFFFF',
+    cardAlt: '#F4F5FA',
+    input: '#EAEBF4',
+    border: 'rgba(0, 0, 0, 0.07)',
+    borderActive: 'rgba(0, 0, 0, 0.15)',
     tint: tintColorLight,
     tabIconDefault: '#ccc',
     tabIconSelected: tintColorLight,
+    accent: '#6C5FEF',
+    accent2: '#4E40D8',
+    teal: '#00A89A',
+    tealDim: 'rgba(0, 168, 154, 0.15)',
+    red: '#E83548',
+    redDim: 'rgba(232, 53, 72, 0.12)',
+    green: '#00A87E',
+    amber: '#E29112',
+    pillBg: 'rgba(0, 0, 0, 0.05)',
+    pillBorder: 'rgba(0, 0, 0, 0.08)'
   },
   dark: {
-    text: '#fff',
-    background: '#000',
+    text: '#FFFFFF',
+    textSecondary: '#6B7080',
+    textMuted: '#3D4258',
+    background: '#08090E',
+    surface: '#111318',
+    card: '#171A23',
+    cardAlt: '#1D2030',
+    input: '#1A1D28',
+    border: 'rgba(255, 255, 255, 0.07)',
+    borderActive: 'rgba(255, 255, 255, 0.15)',
     tint: tintColorDark,
     tabIconDefault: '#ccc',
     tabIconSelected: tintColorDark,
+    accent: '#7C6FFF',
+    accent2: '#5A4FE8',
+    teal: '#00E5C9',
+    tealDim: 'rgba(0, 229, 201, 0.15)',
+    red: '#FF4455',
+    redDim: 'rgba(255, 68, 85, 0.12)',
+    green: '#00C896',
+    amber: '#F5A623',
+    pillBg: 'rgba(255, 255, 255, 0.06)',
+    pillBorder: 'rgba(255, 255, 255, 0.10)'
   },
 };

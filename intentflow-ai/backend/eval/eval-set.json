@@ -1,0 +1,191 @@
+[
+  {
+    "id": 1,
+    "input": "Call John tomorrow at 3pm",
+    "expected": {
+      "title_contains": "Call John",
+      "due_date_set": true,
+      "due_time": "15:00",
+      "priority": "medium",
+      "people_includes": "John"
+    }
+  },
+  {
+    "id": 2,
+    "input": "Buy groceries sometime this week",
+    "expected": {
+      "title_contains": "groceries",
+      "due_date_set": true,
+      "priority": "low",
+      "category": "personal"
+    }
+  },
+  {
+    "id": 3,
+    "input": "URGENT: Fix production bug before EOD",
+    "expected": {
+      "title_contains": "bug",
+      "priority": "high",
+      "category": "urgent",
+      "due_time": "17:00"
+    }
+  },
+  {
+    "id": 4,
+    "input": "something about things",
+    "expected": {
+      "min_confidence": 0,
+      "max_confidence": 50,
+      "title_min_length": 3
+    }
+  },
+  {
+    "id": 5,
+    "input": "Schedule team standup meeting for next Monday morning",
+    "expected": {
+      "title_contains": "standup",
+      "due_date_set": true,
+      "due_time": "09:00",
+      "category": "work",
+      "people_empty": true
+    }
+  },
+  {
+    "id": 6,
+    "input": "Remind me to take my pills every morning and also call the dentist",
+    "expected": {
+      "title_min_length": 5,
+      "description_not_null": true,
+      "category": "health"
+    }
+  },
+  {
+    "id": 7,
+    "input": "Go to gym tomorrow evening",
+    "expected": {
+      "title_contains": "gym",
+      "due_date_set": true,
+      "due_time": "18:00",
+      "category": "health"
+    }
+  },
+  {
+    "id": 8,
+    "input": "Submit quarterly report to Sarah and Mike by next Friday",
+    "expected": {
+      "title_contains": "report",
+      "due_date_set": true,
+      "priority": "medium",
+      "category": "work",
+      "people_includes": "Sarah"
+    }
+  },
+  {
+    "id": 9,
+    "input": "Pick up dry cleaning tmrw",
+    "expected": {
+      "title_contains": "dry cleaning",
+      "due_date_set": true,
+      "category": "personal"
+    }
+  },
+  {
+    "id": 10,
+    "input": "ASAP review pull request #142",
+    "expected": {
+      "title_contains": "pull request",
+      "priority": "high",
+      "due_date_set": true
+    }
+  },
+  {
+    "id": 11,
+    "input": "Water the plants when you can",
+    "expected": {
+      "title_contains": "plants",
+      "priority": "low",
+      "category": "routine"
+    }
+  },
+  {
+    "id": 12,
+    "input": "Book flight to NYC for March 15",
+    "expected": {
+      "title_contains": "flight",
+      "due_date": "2026-03-15",
+      "category": "personal"
+    }
+  },
+  {
+    "id": 13,
+    "input": "Do laundry and clean the kitchen this afternoon",
+    "expected": {
+      "title_min_length": 5,
+      "due_time": "14:00",
+      "category": "routine"
+    }
+  },
+  {
+    "id": 14,
+    "input": "Prepare presentation slides for client demo on April 5th",
+    "expected": {
+      "title_contains": "presentation",
+      "due_date_set": true,
+      "category": "work"
+    }
+  },
+  {
+    "id": 15,
+    "input": "Take dog to vet appointment at 2:30pm on Thursday",
+    "expected": {
+      "title_contains": "vet",
+      "due_date_set": true,
+      "due_time": "14:30"
+    }
+  },
+  {
+    "id": 16,
+    "input": "brb need 2 do smth important lol",
+    "expected": {
+      "title_min_length": 3,
+      "max_confidence": 60
+    }
+  },
+  {
+    "id": 17,
+    "input": "Emergency: server is down, need to restart production ASAP",
+    "expected": {
+      "title_contains": "server",
+      "priority": "high",
+      "category": "urgent"
+    }
+  },
+  {
+    "id": 18,
+    "input": "Read 30 pages of Atomic Habits tonight before bed",
+    "expected": {
+      "title_contains": "Atomic Habits",
+      "due_time": "20:00"
+    }
+  },
+  {
+    "id": 19,
+    "input": "Pay electricity bill by end of month",
+    "expected": {
+      "title_contains": "electricity",
+      "due_date_set": true,
+      "category": "personal"
+    }
+  },
+  {
+    "id": 20,
+    "input": "Discuss budget allocation with Priya and Raj in tomorrow afternoon's meeting",
+    "expected": {
+      "title_contains": "budget",
+      "due_date_set": true,
+      "due_time": "14:00",
+      "category": "work",
+      "people_includes": "Priya"
+    }
+  }
+]

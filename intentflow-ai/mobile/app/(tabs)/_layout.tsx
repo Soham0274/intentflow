@@ -1,151 +1,106 @@
-import React, { useCallback } from 'react';
-import { Tabs } from 'expo-router';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Platform,
-} from 'react-native';
+import { Tabs, router } from 'expo-router';
+import React from 'react';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import Colors from '@/constants/Colors';
+import { useColorScheme } from '@/components/useColorScheme';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Fonts, GradientColors, Shadow } from '@/constants/theme';
-import { useStore } from '@/store/useStore';
-import CaptureSheet from '@/components/screens/CaptureSheet';
-import ToastContainer from '@/components/ui/Toast';
-
-function TabIcon({ icon, label, focused }: { icon: string; label: string; focused: boolean }) {
-  return (
-    <View style={tabIconStyles.wrapper}>
-      <Text style={[tabIconStyles.icon, { opacity: focused ? 1 : 0.5 }]}>{icon}</Text>
-      <Text
-        style={[
-          tabIconStyles.label,
-          { color: focused ? Colors.brandBlue : Colors.textMuted },
-        ]}
-      >
-        {label}
-      </Text>
-    </View>
-  );
-}
-
-const tabIconStyles = StyleSheet.create({
-  wrapper: { alignItems: 'center', gap: 2 },
-  icon: { fontSize: 20 },
-  label: { fontFamily: Fonts.medium, fontSize: 10 },
-});
-
-function FABButton({ onPress }: { onPress: () => void }) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.85}
-      style={fabStyles.touch}
-    >
-      <LinearGradient
-        colors={GradientColors.brand as [string, string]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={fabStyles.gradient}
-      >
-        <Text style={fabStyles.plus}>+</Text>
-      </LinearGradient>
-    </TouchableOpacity>
-  );
-}
-
-const fabStyles = StyleSheet.create({
-  touch: {
-    top: -16,
-    ...Shadow.default,
-  },
-  gradient: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  plus: {
-    color: Colors.white,
-    fontSize: 32,
-    fontFamily: Fonts.regular,
-    lineHeight: 36,
-    marginTop: -2,
-  },
-});
+import { PhosphorIcon } from '@/components/PhosphorIcon'; // Placeholder until I implement actual Phosphor
 
 export default function TabLayout() {
-  const { isCaptureOpen, openCapture, closeCapture } = useStore();
+  const colorScheme = useColorScheme() ?? 'dark';
+  const theme = Colors[colorScheme];
 
   return (
-    <>
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarStyle: styles.tabBar,
-          tabBarActiveTintColor: Colors.brandBlue,
-          tabBarInactiveTintColor: Colors.textMuted,
-          tabBarShowLabel: false,
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: {
+          backgroundColor: theme.surface,
+          borderTopColor: theme.border,
+          height: 84, // Increased height for safe area + inset
+          paddingBottom: 24, // Push icons up
+          paddingTop: 8,
+        },
+        tabBarShowLabel: false,
+        tabBarActiveTintColor: theme.accent,
+        tabBarInactiveTintColor: theme.textSecondary,
+      }}
+    >
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Voice',
+          tabBarIcon: ({ color }) => <PhosphorIcon name="house" color={color} size={24} />,
         }}
-      >
-        <Tabs.Screen
-          name="index"
-          options={{
-            tabBarIcon: ({ focused }) => (
-              <TabIcon icon="🏠" label="Home" focused={focused} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="calendar"
-          options={{
-            tabBarIcon: ({ focused }) => (
-              <TabIcon icon="📅" label="Calendar" focused={focused} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="capture"
-          options={{
-            tabBarButton: () => (
-              <FABButton onPress={openCapture} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="projects"
-          options={{
-            tabBarIcon: ({ focused }) => (
-              <TabIcon icon="📁" label="Projects" focused={focused} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="settings"
-          options={{
-            tabBarIcon: ({ focused }) => (
-              <TabIcon icon="⚙️" label="Settings" focused={focused} />
-            ),
-          }}
-        />
-        <Tabs.Screen name="two" options={{ href: null }} />
-      </Tabs>
-
-      <CaptureSheet visible={isCaptureOpen} onClose={closeCapture} />
-      <ToastContainer />
-    </>
+      />
+      <Tabs.Screen
+        name="collections"
+        options={{
+          title: 'Explore',
+          tabBarIcon: ({ color }) => <PhosphorIcon name="compass" color={color} size={24} />,
+        }}
+      />
+      <Tabs.Screen
+        name="capture" // This is a dummy route that is intercepted by the FAB
+        options={{
+          title: 'Voice Match',
+          tabBarIcon: () => (
+            <TouchableOpacity activeOpacity={0.8} onPress={() => router.push('/')}>
+              <View style={[styles.fabContainer]}>
+                <LinearGradient
+                  colors={[theme.accent, theme.accent2]}
+                  style={styles.fabGradient}
+                >
+                  <PhosphorIcon name="plus" color="#FFFFFF" size={24} />
+                </LinearGradient>
+              </View>
+            </TouchableOpacity>
+          ),
+        }}
+        listeners={{
+          tabPress: (e) => {
+            e.preventDefault(); // Prevent default navigation
+            router.push('/'); // Route to Index (Voice)
+          },
+        }}
+      />
+      <Tabs.Screen
+        name="ambiguity"
+        options={{
+          title: 'Dashboard',
+          tabBarIcon: ({ color }) => <PhosphorIcon name="chart-bar" color={color} size={24} />,
+        }}
+      />
+      <Tabs.Screen
+        name="alerts"
+        options={{
+          title: 'Alerts',
+          tabBarIcon: ({ color }) => <PhosphorIcon name="bell" color={color} size={24} />,
+        }}
+      />
+    </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
-  tabBar: {
-    backgroundColor: Colors.surface,
-    borderTopColor: Colors.elevated,
-    borderTopWidth: 1,
-    height: Platform.OS === 'ios' ? 82 : 64,
-    paddingTop: 8,
-    ...Shadow.default,
+  fabContainer: {
+    top: -24, // Pull it up above the tab bar
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: 'rgba(124, 111, 255, 0.4)',
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    shadowOpacity: 0.44,
+    shadowRadius: 10.32,
+    elevation: 8,
+  },
+  fabGradient: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

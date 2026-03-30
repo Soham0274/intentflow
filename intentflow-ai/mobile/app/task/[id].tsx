@@ -14,7 +14,7 @@ import { useStore } from '@/store/useStore';
 import GradientButton from '@/components/ui/GradientButton';
 import OutlineButton from '@/components/ui/OutlineButton';
 import PriorityBadge from '@/components/ui/PriorityBadge';
-import { AvatarGroup } from '@/components/ui/Avatar';
+import { AvatarWithColor } from '@/components/ui/Avatar';
 
 const STATUS_COLORS = {
   active: Colors.success,
@@ -135,17 +135,14 @@ export default function TaskDetailScreen() {
         </View>
 
         {/* People */}
-        {task.people && task.people.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>People</Text>
-            <View style={styles.peopleRow}>
-              <AvatarGroup initials={task.people} size={36} />
-              {task.people.map((p, i) => (
-                <Text key={i} style={styles.personName}>{p}</Text>
-              ))}
-            </View>
-          </View>
-        )}
+            {task.people && task.people.length > 0 && (
+              <View style={styles.peopleRow}>
+                <AvatarWithColor initials={task.people.map(p => p[0]).join('')} size={36} color={Colors.accent} />
+                {task.people.map((p, i) => (
+                  <Text key={i} style={styles.personName}>{p}</Text>
+                ))}
+              </View>
+            )}
 
         {/* Description */}
         <View style={styles.section}>

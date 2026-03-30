@@ -1,18 +1,31 @@
 import { create } from 'zustand';
-import { Task, Project, User, ToastMessage, ToastType } from '@/types/index';
+import { Task, Project, User, ToastMessage, ToastType, AIExtraction, IntentOption, ScreenName, SystemStatus, ConnectedApp } from '@/types/index';
 import { supabase } from '@/services/supabase';
 import { mockProjects, mockUser } from '@/constants/mockData';
 
 interface AppState {
-  // Data
+  screen: ScreenName;
+  systemStatus: SystemStatus;
   tasks: Task[];
   projects: Project[];
   user: User;
-
-  // UI state
   isCaptureOpen: boolean;
   toasts: ToastMessage[];
+  currentIntent: AIExtraction | null;
+  intentOptions: IntentOption[];
+  selectedIntentId: string | null;
+  notes: string;
+  voiceSensitivity: boolean;
+  autoConfirm: boolean;
+  connectedApps: ConnectedApp[];
+  recentIntents: { title: string; time: string; icon: string }[];
 
+  // Navigation
+  navigateToScreen: (screen: ScreenName) => void;
+  
+  // System status
+  setSystemStatus: (status: SystemStatus) => void;
+  
   // Task actions
   fetchTasks: () => Promise<void>;
   addTask: (task: Partial<Task>) => Promise<void>;
@@ -25,17 +38,51 @@ interface AppState {
   closeCapture: () => void;
   showToast: (type: ToastType, message: string) => void;
   dismissToast: (id: string) => void;
+  
+  // Intent actions
+  setCurrentIntent: (intent: AIExtraction | null) => void;
+  setIntentOptions: (options: IntentOption[]) => void;
+  selectIntentOption: (id: string | null) => void;
+  setNotes: (notes: string) => void;
+  clearIntent: () => void;
+  
+  // Preferences
+  setVoiceSensitivity: (value: boolean) => void;
+  setAutoConfirm: (value: boolean) => void;
 }
 
 export const useStore = create<AppState>((set, get) => ({
-  // Initial data
+  // Initial state
+  screen: 'home',
+  systemStatus: 'online',
   tasks: [],
   projects: mockProjects,
-  user: mockUser, // Need to sync with real auth later
-
-  // UI state
+  user: mockUser,
   isCaptureOpen: false,
   toasts: [],
+  currentIntent: null,
+  intentOptions: [],
+  selectedIntentId: null,
+  notes: '',
+  voiceSensitivity: true,
+  autoConfirm: false,
+  connectedApps: [
+    { name: 'Google Calendar', icon: '📅', status: 'active' },
+    { name: 'Slack', icon: '💬', status: 'active' },
+    { name: 'Notion', icon: '📝', status: 'connect' },
+    { name: 'Email', icon: '📧', status: 'connect' },
+  ],
+  recentIntents: [
+    { title: 'Remind Sarah about deadline', time: '2h ago', icon: '⏰' },
+    { title: 'Schedule team standup', time: '5h ago', icon: '👥' },
+    { title: 'Send weekly report', time: '1d ago', icon: '📊' },
+  ],
+
+  // Navigation
+  navigateToScreen: (screen) => set({ screen }),
+
+  // System status
+  setSystemStatus: (status) => set({ systemStatus: status }),
 
   // Task actions
   fetchTasks: async () => {
@@ -155,4 +202,15 @@ export const useStore = create<AppState>((set, get) => ({
 
   dismissToast: (id) =>
     set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
+
+  // Intent actions
+  setCurrentIntent: (intent) => set({ currentIntent: intent }),
+  setIntentOptions: (options) => set({ intentOptions: options }),
+  selectIntentOption: (id) => set({ selectedIntentId: id }),
+  setNotes: (notes) => set({ notes }),
+  clearIntent: () => set({ currentIntent: null, intentOptions: [], selectedIntentId: null, notes: '' }),
+  
+  // Preferences
+  setVoiceSensitivity: (value) => set({ voiceSensitivity: value }),
+  setAutoConfirm: (value) => set({ autoConfirm: value }),
 }));

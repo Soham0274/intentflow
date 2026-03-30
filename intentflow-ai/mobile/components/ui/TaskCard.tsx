@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { Colors, Fonts, Radius, Shadow, Spacing } from '@/constants/theme';
 import { Task, Priority } from '@/types/index';
-import { AvatarGroup } from './Avatar';
+import { AvatarWithColor } from './Avatar';
 import { useRouter } from 'expo-router';
 
 interface TaskCardProps {
@@ -95,9 +95,9 @@ export default function TaskCard({ task, onToggle, onDelete }: TaskCardProps) {
             <Text style={styles.chipText}>🏷 {task.category}</Text>
           </View>
           <View style={{ flex: 1 }} />
-          {task.people && task.people.length > 0 && (
-            <AvatarGroup initials={task.people} size={22} />
-          )}
+            {task.people && task.people.length > 0 && (
+              <AvatarWithColor initials={task.people.map(p => p[0]).join('')} size={22} color={Colors.accent} />
+            )}
         </View>
       </View>
     </TouchableOpacity>

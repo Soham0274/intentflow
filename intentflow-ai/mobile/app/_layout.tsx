@@ -16,6 +16,8 @@ import {
   Syne_800ExtraBold,
 } from '@expo-google-fonts/syne';
 
+import { ThemeProvider } from '../theme/ThemeContext';
+
 export { ErrorBoundary } from 'expo-router';
 
 export const unstable_settings = {
@@ -48,20 +50,24 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
-        <Stack.Screen name="onboarding" />
-        <Stack.Screen name="login" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="task/[id]" />
-        
-        {/* Modals & Stack Screens */}
-        <Stack.Screen name="profile" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="error" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="review" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="confirm" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="ambiguity" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="+not-found" />
-      </Stack>
+      <ThemeProvider>
+        <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+          <Stack.Screen name="onboarding" />
+          <Stack.Screen name="login" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="task/[id]" />
+          
+          {/* Modals & Stack Screens */}
+          <Stack.Screen name="voice" />
+          <Stack.Screen name="alerts" />
+          <Stack.Screen name="profile" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="error" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="review" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="confirm" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="ambiguity" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="+not-found" />
+        </Stack>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

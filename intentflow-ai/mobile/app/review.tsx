@@ -1,125 +1,124 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView } from 'react-native';
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { Fonts } from '@/constants/theme';
-import { TopBar } from '@/components/ui/TopBar';
-import { Card } from '@/components/ui/Card';
-import { GradientButton } from '@/components/ui/Button';
+import {
+  View, Text, TouchableOpacity, TextInput,
+  ScrollView, StyleSheet, SafeAreaView,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../theme/ThemeContext';
+import { useRouter } from 'expo-router';
 
-export default function ReviewScreen() {
-  const colorScheme = useColorScheme() ?? 'dark';
-  const theme = Colors[colorScheme];
+// Field row wrapper
+const FieldGroup: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => {
+  const { colors, typography } = useTheme();
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <Text style={[typography.labelMD, { color: colors.textMuted, marginBottom: 8 }]}>{label}</Text>
+      {children}
+    </View>
+  );
+};
 
-  const [input, setInput] = useState("Buy milk and email Sarah about the Q3 report");
-  const [selectedMapping, setSelectedMapping] = useState('groceries');
+export default function EditReminderScreen() {
+  const { colors, typography } = useTheme();
+  const router = useRouter();
+  const [notes, setNotes] = useState(
+    'Discuss the Q3 roadmap updates and verify the budget allocation for the marketing sprint.'
+  );
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <TopBar status="analyzing" />
-      
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={[styles.title, { color: theme.textPrimary }]}>Human In The Loop</Text>
-        
-        <View style={[styles.inputGroup, { backgroundColor: theme.cardAlt }]}>
-          <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Raw Voice Input</Text>
-          <TextInput
-            style={[styles.inputField, { color: theme.textPrimary, borderColor: theme.border, backgroundColor: theme.input }]}
-            value={input}
-            onChangeText={setInput}
-            multiline
-          />
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+      {/* Header */}
+      <View style={edStyles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={[edStyles.backBtn, { backgroundColor: colors.bgCard }]}>
+          <Ionicons name="chevron-back" size={18} color={colors.textSecondary} />
+        </TouchableOpacity>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={[typography.statusSM, { color: colors.teal }]}>Intent Confirmed</Text>
+          <Text style={[typography.bodyBold, { color: colors.textPrimary, marginTop: 2 }]}>Edit Reminder</Text>
         </View>
+        <TouchableOpacity style={[edStyles.doneBtn, { backgroundColor: colors.purple }]} onPress={() => router.push('/confirm')}>
+          <Text style={[typography.bodyBold, { color: '#FFF' }]}>Done</Text>
+        </TouchableOpacity>
+      </View>
 
-        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Extracted Entities</Text>
-        
-        <Card style={styles.entityCard}>
-          <Text style={[styles.entityLabel, { color: theme.textSecondary }]}>Task 1</Text>
-          <Text style={[styles.entityValue, { color: theme.textPrimary }]}>Buy milk</Text>
-          <View style={[styles.badge, { backgroundColor: theme.tealDim }]}>
-             <Text style={[styles.badgeText, { color: theme.teal }]}>Groceries</Text>
+      <ScrollView contentContainerStyle={edStyles.body} showsVerticalScrollIndicator={false}>
+        <Text style={[typography.headingMD, { color: colors.textPrimary, marginBottom: 4 }]}>Review Details</Text>
+        <Text style={[typography.bodyMD, { color: colors.textSecondary, marginBottom: 28 }]}>
+          Voice intent parsed successfully. Refine if needed.
+        </Text>
+
+        {/* Contact */}
+        <FieldGroup label="Contact / Entity">
+          <View style={[edStyles.fieldCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+            <View style={[edStyles.contactAvatar, { backgroundColor: colors.tealDim }]}>
+              <Text style={[typography.bodyBold, { color: colors.teal }]}>A</Text>
+            </View>
+            <Text style={[typography.bodyBold, { color: colors.textPrimary, flex: 1, marginLeft: 12 }]}>Arjun</Text>
+            <Ionicons name="person-add-outline" size={18} color={colors.textMuted} />
           </View>
-        </Card>
+        </FieldGroup>
 
-        <Card style={styles.entityCard}>
-          <Text style={[styles.entityLabel, { color: theme.textSecondary }]}>Task 2</Text>
-          <Text style={[styles.entityValue, { color: theme.textPrimary }]}>Email Sarah about Q3 report</Text>
-          <View style={[styles.badge, { backgroundColor: theme.amber + '20' }]}>
-             <Text style={[styles.badgeText, { color: theme.amber }]}>Work / Comms</Text>
+        {/* Action Type */}
+        <FieldGroup label="Action Type">
+          <View style={[edStyles.fieldCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+            <Ionicons name="pencil-outline" size={18} color={colors.purple} style={{ marginRight: 12 }} />
+            <Text style={[typography.bodyBold, { color: colors.textPrimary }]}>Follow up</Text>
           </View>
-        </Card>
+        </FieldGroup>
 
-        <View style={{ marginTop: 24 }}>
-           <GradientButton label="Approve & Send" onPress={() => {}} />
-        </View>
+        {/* Trigger Time */}
+        <FieldGroup label="Trigger Time">
+          <View style={[edStyles.fieldCard, { backgroundColor: colors.bgCard, borderColor: colors.teal + '50' }]}>
+            <View style={[edStyles.clockIcon, { borderColor: colors.teal }]}>
+              <Ionicons name="time-outline" size={16} color={colors.teal} />
+            </View>
+            <Text style={[typography.bodyBold, { color: colors.textPrimary, marginLeft: 12 }]}>
+              Today, 15:15 (After 3pm call)
+            </Text>
+          </View>
+        </FieldGroup>
+
+        {/* Notes */}
+        <FieldGroup label="Additional Notes">
+          <View style={[edStyles.notesCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+            <TextInput
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+              style={[typography.bodyMD, { color: colors.textPrimary, lineHeight: 22 }]}
+              placeholderTextColor={colors.textMuted}
+            />
+          </View>
+        </FieldGroup>
       </ScrollView>
-    </View>
+
+      {/* Command Bar */}
+      <View style={[edStyles.commandBar, { backgroundColor: colors.bgCardAlt, borderColor: colors.border }]}>
+        <View style={[edStyles.dotDeco, { backgroundColor: colors.purple }]} />
+        <TextInput
+          placeholder="Type a command o..."
+          placeholderTextColor={colors.textMuted}
+          style={[typography.bodyMD, { color: colors.textPrimary, flex: 1 }]}
+        />
+        <Ionicons name="mic-outline" size={20} color={colors.textSecondary} style={{ marginRight: 12 }} />
+        <TouchableOpacity style={[edStyles.sendBtn, { backgroundColor: colors.purple }]}>
+          <Ionicons name="arrow-up" size={20} color="#FFF" />
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    padding: 24,
-  },
-  title: {
-    fontFamily: Fonts.display,
-    fontSize: 28,
-    marginBottom: 32,
-  },
-  inputGroup: {
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 40,
-  },
-  inputLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 13,
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  inputField: {
-    fontFamily: Fonts.regular,
-    fontSize: 16,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
-  sectionTitle: {
-    fontFamily: Fonts.bold,
-    fontSize: 14,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 16,
-  },
-  entityCard: {
-    marginBottom: 16,
-    padding: 20,
-  },
-  entityLabel: {
-    fontFamily: Fonts.bold,
-    fontSize: 12,
-    marginBottom: 8,
-    textTransform: 'uppercase',
-  },
-  entityValue: {
-    fontFamily: Fonts.medium,
-    fontSize: 18,
-    marginBottom: 16,
-  },
-  badge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  badgeText: {
-    fontFamily: Fonts.bold,
-    fontSize: 12,
-  },
+const edStyles = StyleSheet.create({
+  header:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 },
+  backBtn:       { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  doneBtn:       { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 20 },
+  body:          { paddingHorizontal: 24, paddingBottom: 100 },
+  fieldCard:     { flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1, padding: 14 },
+  contactAvatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  clockIcon:     { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  notesCard:     { borderRadius: 14, borderWidth: 1, padding: 14, minHeight: 90 },
+  commandBar:    { position: 'absolute', bottom: 16, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', borderRadius: 24, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 12 },
+  dotDeco:       { width: 8, height: 8, borderRadius: 4, marginRight: 10 },
+  sendBtn:       { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
 });

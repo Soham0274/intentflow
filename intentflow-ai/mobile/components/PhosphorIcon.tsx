@@ -2,7 +2,7 @@ import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 
 interface PhosphorIconProps {
-  name: "house" | "compass" | "plus" | "chart-bar" | "bell" | "user" | "gear" | "check" | "warning" | "microphone";
+  name: "house" | "compass" | "plus" | "chart-bar" | "bell" | "user" | "gear" | "check" | "warning" | "microphone" | "calendar";
   color: string;
   size: number;
   weight?: string;
@@ -18,7 +18,8 @@ const iconMap: Record<PhosphorIconProps['name'], keyof typeof Ionicons.glyphMap>
   "gear": "settings-outline",
   "check": "checkmark-outline",
   "warning": "warning-outline",
-  "microphone": "mic"
+  "microphone": "mic",
+  "calendar": "calendar-outline"
 };
 
 export function PhosphorIcon({ name, color, size, weight }: PhosphorIconProps) {

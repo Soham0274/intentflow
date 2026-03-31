@@ -5,6 +5,7 @@ import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { LinearGradient } from 'expo-linear-gradient';
 import { PhosphorIcon } from '@/components/PhosphorIcon'; // Placeholder until I implement actual Phosphor
+import { BottomNavBar } from '@/components/BottomNavBar';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme() ?? 'dark';
@@ -12,18 +13,9 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      tabBar={(props) => <BottomNavBar {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarStyle: {
-          backgroundColor: theme.surface,
-          borderTopColor: theme.border,
-          height: 84, // Increased height for safe area + inset
-          paddingBottom: 24, // Push icons up
-          paddingTop: 8,
-        },
-        tabBarShowLabel: false,
-        tabBarActiveTintColor: theme.accent,
-        tabBarInactiveTintColor: theme.textSecondary,
       }}
     >
       <Tabs.Screen
@@ -65,10 +57,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="ambiguity"
+        name="calendar"
         options={{
-          title: 'Dashboard',
-          tabBarIcon: ({ color }) => <PhosphorIcon name="chart-bar" color={color} size={24} />,
+          title: 'Schedule',
+          tabBarIcon: ({ color }) => <PhosphorIcon name="calendar" color={color} size={24} />,
         }}
       />
       <Tabs.Screen

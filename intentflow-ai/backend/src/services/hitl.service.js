@@ -6,6 +6,12 @@ exports.getPendingTasks = async (userId) => {
   return hitlRepository.getPendingTasks(userId);
 };
 
+exports.getTaskById = async (hitlId, userId) => {
+  const item = await hitlRepository.findById(hitlId, userId);
+  if (!item) throw new NotFoundError('Queue item');
+  return item;
+};
+
 exports.confirmTask = async (hitlId, userId) => {
   const queueItem = await hitlRepository.findById(hitlId, userId);
   

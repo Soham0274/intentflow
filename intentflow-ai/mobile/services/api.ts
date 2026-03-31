@@ -52,11 +52,46 @@ export const fetchPendingHitl = async () => {
   return response.data;
 };
 
-export const resolveHitl = async (hitlId: string, status: string, approvedTasks?: any) => {
-  const response = await api.post(`/hitl/${hitlId}/resolve`, {
-    status,
-    extracted_tasks: approvedTasks
+export const fetchHitlById = async (id: string) => {
+  const response = await api.get(`/hitl/${id}`);
+  return response.data;
+};
+
+export const confirmHitl = async (hitlId: string) => {
+  const response = await api.post('/hitl/confirm', { hitlId });
+  return response.data;
+};
+
+export const rejectHitl = async (hitlId: string, reason?: string) => {
+  const response = await api.post('/hitl/reject', { hitlId, reason });
+  return response.data;
+};
+
+export const processVoice = async (audioUri: string) => {
+  const formData = new FormData();
+  // @ts-ignore
+  formData.append('audio', {
+    uri: audioUri,
+    name: 'voice_input.m4a',
+    type: 'audio/m4a',
   });
+
+  const response = await api.post('/nlp/voice', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data;
+};
+
+// CALENDAR APIs
+export const fetchCalendarEvents = async () => {
+  const response = await api.get('/calendar/events');
+  return response.data;
+};
+
+export const syncTaskToCalendar = async (task: any) => {
+  const response = await api.post('/calendar/sync-task', { task });
   return response.data;
 };
 

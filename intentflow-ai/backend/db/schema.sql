@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS public.user_preferences (
   user_id uuid PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
   theme text DEFAULT 'system',
   notifications_enabled boolean DEFAULT true,
+  google_refresh_token text,
+  google_calendar_connected boolean DEFAULT false,
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );

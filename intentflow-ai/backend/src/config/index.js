@@ -34,6 +34,11 @@ const config = {
     WEBHOOK_SECRET: process.env.N8N_WEBHOOK_SECRET || '',
     WEBHOOK_BASE_URL: process.env.N8N_WEBHOOK_BASE_URL || ''
   },
+  GOOGLE: {
+    CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
+    CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || '',
+    REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI || ''
+  },
   APP: {
     FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:8081'
   }

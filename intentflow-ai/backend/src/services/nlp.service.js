@@ -128,7 +128,49 @@ Text: "${text}"`;
   }
 }
 
+async function extractTasksFromAudio(audioBase64, mimeType, userId) {
+  const prompt = `${SYSTEM_PROMPT}\n\nUser provided an audio recording. Please transcribe it and extract the tasks. If the audio is silent or unintelligible, return an empty array.`;
+  
+  const audioPart = {
+    inlineData: {
+      data: audioBase64,
+      mimeType: mimeType
+    }
+  };
+
+  let result;
+  try {
+    const rawRes = await geminiModel.generateContent([prompt, audioPart]);
+    const text = rawRes.response?.candidates?.[0]?.content?.parts?.[0]?.text
+              || rawRes.response?.text?.() || '';
+    
+    result = parseResponse(text);
+  } catch (err) {
+    console.error('Gemini Voice Error:', err);
+    throw new NLPValidationError('Gemini API Voice Error: ' + err.message);
+  }
+
+  const tasks = result.map(t => {
+    let conf = t.confidence !== undefined ? Math.round(t.confidence * 100) : 30;
+    delete t.confidence;
+    return {
+      ...t,
+      confidence_score: conf
+    };
+  });
+
+  const queueEntry = await hitlRepository.createHITLEntry({
+    user_id: userId,
+    raw_input: "[Audio Input]",
+    extracted_tasks: tasks,
+    status: 'pending_review'
+  });
+
+  return { hitlId: queueEntry.id, tasks };
+}
+
 module.exports = {
   extractTasks,
-  parseIntent
+  parseIntent,
+  extractTasksFromAudio
 };

@@ -24,6 +24,11 @@ router.get('/pending', requireAuth, asyncHandler(async (req, res) => {
   success(res, data);
 }));
 
+router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
+  const data = await hitlService.getTaskById(req.params.id, req.user.id);
+  success(res, data);
+}));
+
 router.post('/confirm', requireAuth, validate(confirmSchema), asyncHandler(async (req, res) => {
   const data = await hitlService.confirmTask(req.body.hitlId, req.user.id);
   success(res, data);

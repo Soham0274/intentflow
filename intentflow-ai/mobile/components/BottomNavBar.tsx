@@ -1,40 +1,53 @@
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Platform, Text } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
-import { useRouter, usePathname } from 'expo-router';
+import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { useRouter } from 'expo-router';
 
-const NAV_ITEMS = [
-  { name: 'Home',        icon: 'home-outline',     activeIcon: 'home',        route: '/'   },
-  { name: 'Collections', icon: 'grid-outline',     activeIcon: 'grid',        route: '/'   }, // mapped to root
-  { name: 'Add',         icon: 'add',              activeIcon: 'add',         route: '/voice' },
-  { name: 'Calendar',    icon: 'calendar-outline', activeIcon: 'calendar',    route: '/review' },
-  { name: 'Profile',     icon: 'person-outline',   activeIcon: 'person',      route: '/profile' },
-] as const;
-
-export const BottomNavBar: React.FC = () => {
+export const BottomNavBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation }) => {
   const { colors, isDark } = useTheme();
   const router = useRouter();
-  const pathname = usePathname();
 
   return (
     <BlurView
-      intensity={isDark ? 60 : 80}
+      intensity={isDark ? 80 : 100}
       tint={isDark ? 'dark' : 'light'}
-      style={[styles.blurWrapper, { borderTopColor: colors.border }]}
+      style={[styles.blurWrapper, { borderColor: 'rgba(255,255,255,0.05)' }]}
     >
       <View style={styles.row}>
-        {NAV_ITEMS.map((item, idx) => {
-          const isCenter = idx === 2;
-          const isActive = pathname === item.route;
+        {state.routes.map((route, index) => {
+          const { options } = descriptors[route.key];
+          const isFocused = state.index === index;
+          const isCenter = route.name === 'capture';
+
+          const onPress = () => {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+
+            // The capture button has listeners in _layout to intercept, but we can also manually route if needed.
+            if (!isFocused && !event.defaultPrevented) {
+              navigation.navigate(route.name, route.params);
+            }
+          };
+
+          const onLongPress = () => {
+            navigation.emit({
+              type: 'tabLongPress',
+              target: route.key,
+            });
+          };
 
           if (isCenter) {
             return (
               <TouchableOpacity
-                key={item.name}
+                key={route.key}
                 style={[styles.fab, { backgroundColor: colors.purple }]}
-                onPress={() => router.push(item.route as any)}
+                onPress={() => router.push('/voice')} // Directly trigger voice entry modal layout
                 activeOpacity={0.85}
               >
                 <Ionicons name="add" size={28} color="#FFF" />
@@ -42,17 +55,33 @@ export const BottomNavBar: React.FC = () => {
             );
           }
 
+          // Map route names to correct icons
+          let iconName: keyof typeof Ionicons.glyphMap = 'help-circle-outline';
+          let activeIconName: keyof typeof Ionicons.glyphMap = 'help-circle';
+          if (route.name === 'index') {
+            iconName = 'home-outline'; activeIconName = 'home';
+          } else if (route.name === 'collections') {
+            iconName = 'grid-outline'; activeIconName = 'grid';
+          } else if (route.name === 'ambiguity') {
+             iconName = 'bar-chart-outline'; activeIconName = 'bar-chart';
+          } else if (route.name === 'calendar') {
+             iconName = 'calendar-outline'; activeIconName = 'calendar';
+          } else if (route.name === 'alerts') {
+             iconName = 'notifications-outline'; activeIconName = 'notifications';
+          }
+
           return (
             <TouchableOpacity
-              key={item.name}
+              key={route.key}
               style={styles.navItem}
-              onPress={() => router.push(item.route as any)}
+              onPress={onPress}
+              onLongPress={onLongPress}
               activeOpacity={0.7}
             >
               <Ionicons
-                name={isActive ? item.activeIcon : item.icon}
+                name={isFocused ? activeIconName : iconName}
                 size={22}
-                color={isActive ? colors.navActive : colors.navInactive}
+                color={isFocused ? colors.textPrimary : colors.textMuted}
               />
             </TouchableOpacity>
           );
@@ -65,12 +94,13 @@ export const BottomNavBar: React.FC = () => {
 const styles = StyleSheet.create({
   blurWrapper: {
     position:       'absolute',
-    bottom:         0,
-    left:           0,
-    right:          0,
-    borderTopWidth: 1,
-    paddingBottom:  Platform.OS === 'ios' ? 20 : 8,
-    paddingTop:     10,
+    bottom:         Platform.OS === 'ios' ? 34 : 24, // Floating offset
+    left:           24, // Pull in from sides
+    right:          24,
+    borderRadius:   40, // 100% pill shape
+    borderWidth:    1,
+    paddingVertical: 12,
+    overflow:       'hidden',
   },
   row: {
     flexDirection:  'row',
@@ -81,15 +111,14 @@ const styles = StyleSheet.create({
   navItem: {
     alignItems: 'center',
     flex: 1,
-    paddingVertical: 4,
+    paddingVertical: 8,
   },
   fab: {
-    width:        56,
-    height:       56,
-    borderRadius: 28,
+    width:        52,
+    height:       52,
+    borderRadius: 26,
     alignItems:   'center',
     justifyContent: 'center',
-    marginBottom:   12,
     shadowColor: '#7C3AED',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.5,

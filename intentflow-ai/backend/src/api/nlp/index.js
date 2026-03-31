@@ -6,6 +6,8 @@ const asyncHandler = require('../../utils/asyncHandler');
 const requireAuth = require('../../middleware/auth.middleware');
 const validate = require('../../middleware/validate.middleware');
 const { z } = require('zod');
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Schema
 const extractSchema = z.object({ text: z.string().min(3).max(2000) });
@@ -32,6 +34,18 @@ router.post('/parse', requireAuth, validate(parseSchema), asyncHandler(async (re
 router.post('/validate', requireAuth, validate(validateSchema), asyncHandler(async (req, res) => {
   // Re-run parse intent on stringified edited obj to 'validate' it if needed
   const result = await nlpService.parseIntent(JSON.stringify(req.body.task));
+  success(res, result);
+}));
+
+router.post('/voice', requireAuth, upload.single('audio'), asyncHandler(async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: 'No audio file provided' });
+  }
+  
+  const audioBase64 = req.file.buffer.toString('base64');
+  const mimeType = req.file.mimetype || 'audio/wav';
+  
+  const result = await nlpService.extractTasksFromAudio(audioBase64, mimeType, req.user.id);
   success(res, result);
 }));
 

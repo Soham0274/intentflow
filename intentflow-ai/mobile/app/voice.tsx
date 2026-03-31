@@ -7,8 +7,9 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { StatusPill } from '../components/StatusPill';
 import { ConfidenceBadge } from '../components/ConfidenceBadge';
-import { BottomNavBar } from '../components/BottomNavBar';
 import { useRouter } from 'expo-router';
+import { Audio } from 'expo-av';
+import { processVoice } from '../services/api';
 
 // ─── Waveform ──────────────────────────────────────────────────────────────
 const WaveformVisualizer: React.FC<{ active: boolean }> = ({ active }) => {
@@ -85,12 +86,59 @@ const ParseRow: React.FC<ParseRowProps> = ({ label, value, confidence, tag, tagC
 // ─── Main Screen ───────────────────────────────────────────────────────────
 export default function VoiceListeningScreen() {
   const { colors, typography } = useTheme();
-  const [isListening, setIsListening] = useState(true);
+  const [isListening, setIsListening] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const router = useRouter();
 
   const transcript = 'Remind me to follow up with Arjun after the ';
   const fadedPart  = '3pm call';
+
+  async function startRecording() {
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (permission.status !== 'granted') return;
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      setRecording(recording);
+      setIsListening(true);
+    } catch (err) {
+      console.error('Failed to start recording', err);
+    }
+  }
+
+  async function stopRecording() {
+    if (!recording) return;
+
+    setIsListening(false);
+    setIsProcessing(true);
+    
+    try {
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      if (uri) {
+        const result = await processVoice(uri);
+        // Navigate to review screen representing HITL Review
+        router.push({
+          pathname: '/review',
+          params: { hitlId: result.hitlId }
+        });
+      }
+    } catch (err) {
+      console.error('Failed to stop recording', err);
+    } finally {
+      setRecording(null);
+      setIsProcessing(false);
+    }
+  }
 
   // Mic pulse glow
   useEffect(() => {
@@ -159,20 +207,19 @@ export default function VoiceListeningScreen() {
         <View style={s.micContainer}>
           <Animated.View style={[s.micGlow, { transform: [{ scale: pulseAnim }], backgroundColor: colors.purpleDim }]} />
           <TouchableOpacity
-            style={[s.micBtn, { backgroundColor: colors.purple }]}
-            onPress={() => {
-              setIsListening(p => !p);
-              // Navigate to review screen representing HITL Review when stopped
-              router.push('/review');
-            }}
+            style={[s.micBtn, { backgroundColor: isProcessing ? colors.textMuted : colors.purple }]}
+            onPress={isListening ? stopRecording : startRecording}
             activeOpacity={0.85}
+            disabled={isProcessing}
           >
-            <Ionicons name="mic" size={24} color="#FFF" />
+            {isProcessing ? (
+              <MaterialCommunityIcons name="loading" size={24} color="#FFF" style={{ transform: [{ rotate: '45deg' }] }} />
+            ) : (
+              <Ionicons name={isListening ? "stop" : "mic"} size={24} color="#FFF" />
+            )}
           </TouchableOpacity>
         </View>
       </View>
-
-      <BottomNavBar />
     </SafeAreaView>
   );
 }

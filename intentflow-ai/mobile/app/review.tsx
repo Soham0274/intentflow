@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, TextInput,
   ScrollView, StyleSheet, SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { fetchHitlById, confirmHitl } from '../services/api';
+import { ActivityIndicator } from 'react-native';
 
 // Field row wrapper
 const FieldGroup: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => {
@@ -21,9 +23,47 @@ const FieldGroup: React.FC<{ label: string; children: React.ReactNode }> = ({ la
 export default function EditReminderScreen() {
   const { colors, typography } = useTheme();
   const router = useRouter();
-  const [notes, setNotes] = useState(
-    'Discuss the Q3 roadmap updates and verify the budget allocation for the marketing sprint.'
-  );
+  const { hitlId } = useLocalSearchParams<{ hitlId: string }>();
+  const [loading, setLoading] = useState(!!hitlId);
+  const [taskData, setTaskData] = useState<any>(null);
+  
+  const [notes, setNotes] = useState('');
+
+  useEffect(() => {
+    if (hitlId) {
+      fetchHitlById(hitlId).then(res => {
+        const data = res.data || res;
+        const extracted = data.extracted_tasks?.[0] || {};
+        setTaskData(extracted);
+        setNotes(extracted.description || '');
+        setLoading(false);
+      }).catch(err => {
+        console.error('Failed to load review data', err);
+        setLoading(false);
+      });
+    }
+  }, [hitlId]);
+
+  const handleDone = async () => {
+    try {
+      if (hitlId) {
+        await confirmHitl(hitlId);
+        router.push('/confirm');
+      } else {
+        router.push('/confirm');
+      }
+    } catch (e) {
+      console.error('Failed to confirm', e);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={colors.purple} />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -36,7 +76,7 @@ export default function EditReminderScreen() {
           <Text style={[typography.statusSM, { color: colors.teal }]}>Intent Confirmed</Text>
           <Text style={[typography.bodyBold, { color: colors.textPrimary, marginTop: 2 }]}>Edit Reminder</Text>
         </View>
-        <TouchableOpacity style={[edStyles.doneBtn, { backgroundColor: colors.purple }]} onPress={() => router.push('/confirm')}>
+        <TouchableOpacity style={[edStyles.doneBtn, { backgroundColor: colors.purple }]} onPress={handleDone}>
           <Text style={[typography.bodyBold, { color: '#FFF' }]}>Done</Text>
         </TouchableOpacity>
       </View>
@@ -62,7 +102,9 @@ export default function EditReminderScreen() {
         <FieldGroup label="Action Type">
           <View style={[edStyles.fieldCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
             <Ionicons name="pencil-outline" size={18} color={colors.purple} style={{ marginRight: 12 }} />
-            <Text style={[typography.bodyBold, { color: colors.textPrimary }]}>Follow up</Text>
+            <Text style={[typography.bodyBold, { color: colors.textPrimary }]}>
+              {taskData?.category || 'Task'}
+            </Text>
           </View>
         </FieldGroup>
 
@@ -73,7 +115,7 @@ export default function EditReminderScreen() {
               <Ionicons name="time-outline" size={16} color={colors.teal} />
             </View>
             <Text style={[typography.bodyBold, { color: colors.textPrimary, marginLeft: 12 }]}>
-              Today, 15:15 (After 3pm call)
+              {taskData?.due_date} {taskData?.due_time ? `@ ${taskData.due_time}` : ''}
             </Text>
           </View>
         </FieldGroup>

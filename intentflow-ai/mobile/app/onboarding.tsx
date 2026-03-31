@@ -92,7 +92,7 @@ export default function OnboardingScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => router.replace('/(tabs)/' as any)}
+          onPress={() => router.replace('/(tabs)' as any)}
           activeOpacity={0.7}
         >
           <Text style={styles.signInLink}>
@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   signInLinkBold: {
-    fontFamily: Fonts.semiBold,
+    fontFamily: Fonts.bold,
     color: Colors.brandBlue,
   },
 });

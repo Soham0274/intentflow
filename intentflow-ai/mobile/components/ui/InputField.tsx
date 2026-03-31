@@ -11,6 +11,7 @@ import {
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 
 interface InputFieldProps {
+  icon?: React.ReactNode;
   label?: string;
   placeholder?: string;
   value: string;
@@ -24,6 +25,7 @@ interface InputFieldProps {
 }
 
 export default function InputField({
+  icon,
   label,
   placeholder,
   value,
@@ -49,6 +51,7 @@ export default function InputField({
           minHeight ? { minHeight } : {},
         ]}
       >
+        {icon && <View style={styles.iconWrap}>{icon}</View>}
         <TextInput
           style={[styles.input, multiline && { textAlignVertical: 'top', paddingTop: 12 }]}
           placeholder={placeholder}
@@ -91,10 +94,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: Colors.background,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: '#333333', // darker border for auth inputs
     borderRadius: Radius.md,
     height: 52,
     paddingHorizontal: 16,
+  },
+  iconWrap: {
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   focused: {
     borderColor: Colors.brandBlue,

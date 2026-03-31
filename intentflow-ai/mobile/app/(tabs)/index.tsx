@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
   SafeAreaView, TextInput, Dimensions, FlatList,
@@ -9,6 +9,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import { ThemedToggle } from '../../components/ThemedToggle';
 import { BottomNavBar } from '../../components/BottomNavBar';
 import { useRouter } from 'expo-router';
+import { fetchTasks } from '../../services/api';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const CARD_W = SCREEN_W * 0.72;
@@ -22,18 +23,36 @@ interface LifeAreaData {
   gradient:   [string, string];
 }
 
-const LIFE_AREAS: LifeAreaData[] = [
-  { id: 'home',    icon: 'home',         title: 'Home',    subtitle: 'Chores & upkeep',     taskCount: 12, gradient: ['#4338CA', '#6D28D9'] },
-  { id: 'work',    icon: 'briefcase',    title: 'Work',    subtitle: 'Projects & tasks',     taskCount: 28, gradient: ['#7C3AED', '#9D6EFB'] },
-  { id: 'health',  icon: 'fitness',      title: 'Health',  subtitle: 'Fitness & wellness',  taskCount:  7, gradient: ['#0F9688', '#14B8A6'] },
-  { id: 'finance', icon: 'cash-outline', title: 'Finance', subtitle: 'Bills & budgeting',   taskCount:  5, gradient: ['#D97706', '#F59E0B'] },
+const INITIAL_LIFE_AREAS: LifeAreaData[] = [
+  { id: 'home',    icon: 'home',         title: 'Home',    subtitle: 'Chores & upkeep',     taskCount: 0, gradient: ['#4338CA', '#6D28D9'] },
+  { id: 'work',    icon: 'briefcase',    title: 'Work',    subtitle: 'Projects & tasks',     taskCount: 0, gradient: ['#7C3AED', '#9D6EFB'] },
+  { id: 'health',  icon: 'fitness',      title: 'Health',  subtitle: 'Fitness & wellness',  taskCount: 0, gradient: ['#0F9688', '#14B8A6'] },
+  { id: 'finance', icon: 'cash-outline', title: 'Finance', subtitle: 'Bills & budgeting',   taskCount: 0, gradient: ['#D97706', '#F59E0B'] },
 ];
 
 export default function CollectionsScreen() {
   const { colors, typography } = useTheme();
   const [nudgesOn, setNudgesOn] = useState(true);
   const [searchQ, setSearchQ]  = useState('');
+  const [lifeAreas, setLifeAreas] = useState<LifeAreaData[]>(INITIAL_LIFE_AREAS);
   const router = useRouter();
+
+  useEffect(() => {
+    async function loadTasks() {
+      try {
+        const data = await fetchTasks();
+        // Assuming data is an array of tasks with a 'category' field matching the IDs above
+        const updatedAreas = INITIAL_LIFE_AREAS.map(area => ({
+          ...area,
+          taskCount: data.filter((t: any) => (t.category || t.category_id || '').toLowerCase() === area.id).length
+        }));
+        setLifeAreas(updatedAreas);
+      } catch (e) {
+        console.warn('Failed to load tasks:', e);
+      }
+    }
+    loadTasks();
+  }, []);
 
   const renderCard = ({ item }: { item: LifeAreaData }) => (
     <TouchableOpacity activeOpacity={0.88} style={[coStyles.card, { width: CARD_W }]}>
@@ -94,7 +113,7 @@ export default function CollectionsScreen() {
 
         {/* Horizontal Card Scroll */}
         <FlatList
-          data={LIFE_AREAS}
+          data={lifeAreas}
           horizontal
           keyExtractor={item => item.id}
           renderItem={renderCard}

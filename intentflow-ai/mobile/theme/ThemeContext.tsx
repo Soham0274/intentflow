@@ -1,13 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DarkColors, LightColors, ColorScheme } from './colors';
+import { useColorScheme } from 'react-native';
+import Colors from '../constants/Colors';
 import { Typography } from './typography';
 
 type ThemeMode = 'dark' | 'light';
 
 interface ThemeContextValue {
   mode:      ThemeMode;
-  colors:    ColorScheme;
+  colors:    typeof Colors.dark;
   typography: typeof Typography;
   toggleTheme: () => void;
   isDark:    boolean;
@@ -16,33 +17,38 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue>({} as ThemeContextValue);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [mode, setMode] = useState<ThemeMode>('dark');
-  const [isLoaded, setIsLoaded] = useState(false);
-
-  useEffect(() => {
-    AsyncStorage.getItem('themeMode').then((saved) => {
-      if (saved === 'light' || saved === 'dark') {
-        setMode(saved);
-      }
-      setIsLoaded(true);
-    });
-  }, []);
+  const deviceColorScheme = useColorScheme();
+  const [mode, setMode] = useState<ThemeMode>(deviceColorScheme || 'dark');
 
   const toggleTheme = () => {
-    const next = mode === 'dark' ? 'light' : 'dark';
-    setMode(next);
-    AsyncStorage.setItem('themeMode', next);
+    const newMode = mode === 'dark' ? 'light' : 'dark';
+    setMode(newMode);
+    AsyncStorage.setItem('theme-mode', newMode);
   };
 
-  if (!isLoaded) return null;
+  useEffect(() => {
+    const loadTheme = async () => {
+      try {
+        const savedMode = await AsyncStorage.getItem('theme-mode');
+        if (savedMode && (savedMode === 'dark' || savedMode === 'light')) {
+          setMode(savedMode);
+        }
+      } catch (error) {
+        console.log('Error loading theme:', error);
+      }
+    };
+    loadTheme();
+  }, []);
+
+  const colors = mode === 'dark' ? Colors.dark : Colors.light;
 
   return (
     <ThemeContext.Provider value={{
       mode,
-      colors:     mode === 'dark' ? DarkColors : LightColors,
+      colors,
       typography: Typography,
       toggleTheme,
-      isDark:     mode === 'dark',
+      isDark: mode === 'dark',
     }}>
       {children}
     </ThemeContext.Provider>

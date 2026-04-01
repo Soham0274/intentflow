@@ -3,27 +3,33 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import {
   useFonts,
-  DMSans_400Regular,
-  DMSans_500Medium,
-  DMSans_700Bold,
-  DMSans_800ExtraBold,
-} from '@expo-google-fonts/dm-sans';
-import {
-  Syne_600SemiBold,
-  Syne_700Bold,
-  Syne_800ExtraBold,
-} from '@expo-google-fonts/syne';
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from '@expo-google-fonts/inter';
 
 import { ThemeProvider } from '../theme/ThemeContext';
 import { AuthProvider, useAuth } from '../store/AuthContext';
+import { ErrorBoundary } from '../components/ErrorBoundary';
+import { AppProvider } from '../context/AppContext';
+import { useAuthCallback } from '../hooks/useAuthCallback';
+
+const queryClient = new QueryClient();
 
 function RootNavigator() {
   const { session, isLoading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   const navigationState = useRootNavigationState();
+
+  // Handle OAuth deep link callbacks
+  useAuthCallback();
 
   useEffect(() => {
     if (isLoading) return;
@@ -42,8 +48,9 @@ function RootNavigator() {
 
   return (
     <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
-      <Stack.Screen name="onboarding" />
+      <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="login" />
+      <Stack.Screen name="onboarding" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="task/[id]" />
       
@@ -63,20 +70,17 @@ function RootNavigator() {
 export { ErrorBoundary } from 'expo-router';
 
 export const unstable_settings = {
-  initialRouteName: '(tabs)',
+  initialRouteName: 'login',
 };
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
-    DMSans_400Regular,
-    DMSans_500Medium,
-    DMSans_700Bold,
-    DMSans_800ExtraBold,
-    Syne_600SemiBold,
-    Syne_700Bold,
-    Syne_800ExtraBold,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
   });
 
   useEffect(() => {
@@ -91,12 +95,21 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="light" />
-      <AuthProvider>
-        <ThemeProvider>
-          <RootNavigator />
-        </ThemeProvider>
-      </AuthProvider>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <KeyboardProvider>
+              <ThemeProvider>
+                <AuthProvider>
+                  <AppProvider>
+                    <RootNavigator />
+                  </AppProvider>
+                </AuthProvider>
+              </ThemeProvider>
+            </KeyboardProvider>
+          </GestureHandlerRootView>
+        </QueryClientProvider>
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

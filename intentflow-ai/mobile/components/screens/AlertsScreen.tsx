@@ -32,7 +32,7 @@ function DeliveryRule({ label, description, icon, on, onToggle }: DeliveryRulePr
           <Text style={ruleStyles.description}>{description}</Text>
         </View>
       </View>
-      <Toggle on={on} onToggle={onToggle} />
+      <Toggle value={on} onValueChange={onToggle} />
     </View>
   );
 }
@@ -164,7 +164,7 @@ export function AlertsScreen() {
               AI-powered reminders that adapt to your habits and suggest optimal times to act on your intents.
             </Text>
             <View style={styles.featureToggle}>
-              <Toggle on={smartNudges} onToggle={() => setSmartNudges(!smartNudges)} />
+              <Toggle value={smartNudges} onValueChange={() => setSmartNudges(!smartNudges)} />
             </View>
           </LinearGradient>
         </Card>

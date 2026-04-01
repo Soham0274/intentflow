@@ -109,7 +109,7 @@ export function ReviewScreen() {
           <Text style={styles.confirmed}>INTENT CONFIRMED</Text>
           <Text style={styles.title}>Review Details</Text>
         </View>
-        <Avatar letter="A" size={36} />
+        <Avatar initials="A" size={36} />
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>

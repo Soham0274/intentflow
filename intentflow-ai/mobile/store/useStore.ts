@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { Task, Project, User, ToastMessage, ToastType, AIExtraction, IntentOption, ScreenName, SystemStatus, ConnectedApp } from '@/types/index';
-import { supabase } from '@/services/supabase';
-import { mockProjects, mockUser } from '@/constants/mockData';
+import * as api from '@/services/api';
 
 interface AppState {
   screen: ScreenName;
@@ -33,6 +32,13 @@ interface AppState {
   toggleTask: (id: string) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
 
+  // Data fetching
+  fetchUser: () => Promise<void>;
+  fetchProjects: () => Promise<void>;
+  fetchConnectedApps: () => Promise<void>;
+  fetchRecentIntents: () => Promise<void>;
+  initializeApp: () => Promise<void>;
+
   // UI actions
   openCapture: () => void;
   closeCapture: () => void;
@@ -56,8 +62,8 @@ export const useStore = create<AppState>((set, get) => ({
   screen: 'home',
   systemStatus: 'online',
   tasks: [],
-  projects: mockProjects,
-  user: mockUser,
+  projects: [],
+  user: { id: '', name: '', email: '', avatar: '' },
   isCaptureOpen: false,
   toasts: [],
   currentIntent: null,
@@ -66,17 +72,8 @@ export const useStore = create<AppState>((set, get) => ({
   notes: '',
   voiceSensitivity: true,
   autoConfirm: false,
-  connectedApps: [
-    { name: 'Google Calendar', icon: '📅', status: 'active' },
-    { name: 'Slack', icon: '💬', status: 'active' },
-    { name: 'Notion', icon: '📝', status: 'connect' },
-    { name: 'Email', icon: '📧', status: 'connect' },
-  ],
-  recentIntents: [
-    { title: 'Remind Sarah about deadline', time: '2h ago', icon: '⏰' },
-    { title: 'Schedule team standup', time: '5h ago', icon: '👥' },
-    { title: 'Send weekly report', time: '1d ago', icon: '📊' },
-  ],
+  connectedApps: [],
+  recentIntents: [],
 
   // Navigation
   navigateToScreen: (screen) => set({ screen }),
@@ -87,21 +84,12 @@ export const useStore = create<AppState>((set, get) => ({
   // Task actions
   fetchTasks: async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      
-      const mappedTasks = data.map((t: any) => ({
+      const tasks = await api.fetchTasks();
+      const mappedTasks = tasks.map((t: any) => ({
         ...t,
-        dueDate: t.due_date,
-        dueTime: t.due_time,
-        createdAt: t.created_at,
+        dueDate: t.due_date || t.dueDate,
+        dueTime: t.due_time || t.dueTime,
+        createdAt: t.created_at || t.createdAt,
       }));
       set({ tasks: mappedTasks as Task[] });
     } catch (error: any) {
@@ -111,35 +99,14 @@ export const useStore = create<AppState>((set, get) => ({
 
   addTask: async (task) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const dbTask = {
-        title: task.title,
-        description: task.description,
-        due_date: task.dueDate,
-        due_time: task.dueTime,
-        priority: task.priority,
-        category: task.category,
-        user_id: user.id
+      const newTask = await api.createTask(task);
+      const mappedTask = {
+        ...newTask,
+        dueDate: newTask.due_date || newTask.dueDate,
+        dueTime: newTask.due_time || newTask.dueTime,
+        createdAt: newTask.created_at || newTask.createdAt,
       };
-
-      const { data, error } = await supabase
-        .from('tasks')
-        .insert(dbTask)
-        .select()
-        .single();
-        
-      if (error) throw error;
-      
-      const newTask = {
-        ...data,
-        dueDate: data.due_date,
-        dueTime: data.due_time,
-        createdAt: data.created_at,
-      };
-      
-      set((state) => ({ tasks: [newTask as Task, ...state.tasks] }));
+      set((state) => ({ tasks: [mappedTask as Task, ...state.tasks] }));
       get().showToast('success', 'Task created successfully');
     } catch (error: any) {
       get().showToast('error', error.message);
@@ -148,8 +115,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   updateTask: async (id, updates) => {
     try {
-      const { error } = await supabase.from('tasks').update(updates).eq('id', id);
-      if (error) throw error;
+      await api.updateTask(id, updates);
       set((state) => ({
         tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)),
       }));
@@ -164,9 +130,7 @@ export const useStore = create<AppState>((set, get) => ({
     
     const newStatus = task.status === 'completed' ? 'active' : 'completed';
     try {
-      const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', id);
-      if (error) throw error;
-      
+      await api.updateTask(id, { status: newStatus });
       set((state) => ({
         tasks: state.tasks.map((t) =>
           t.id === id ? { ...t, status: newStatus } : t
@@ -179,13 +143,60 @@ export const useStore = create<AppState>((set, get) => ({
 
   deleteTask: async (id) => {
     try {
-      const { error } = await supabase.from('tasks').delete().eq('id', id);
-      if (error) throw error;
+      await api.deleteTask(id);
       set((state) => ({ tasks: state.tasks.filter((t) => t.id !== id) }));
       get().showToast('success', 'Task deleted');
     } catch (error: any) {
       get().showToast('error', error.message);
     }
+  },
+
+  // Data fetching from backend
+  fetchUser: async () => {
+    try {
+      const user = await api.fetchUser();
+      set({ user });
+    } catch (error: any) {
+      get().showToast('error', error.message || 'Failed to fetch user');
+    }
+  },
+
+  fetchProjects: async () => {
+    try {
+      const projects = await api.fetchProjects();
+      set({ projects });
+    } catch (error: any) {
+      get().showToast('error', error.message || 'Failed to fetch projects');
+    }
+  },
+
+  fetchConnectedApps: async () => {
+    try {
+      const apps = await api.fetchConnectedApps();
+      set({ connectedApps: apps });
+    } catch (error: any) {
+      get().showToast('error', error.message || 'Failed to fetch connected apps');
+    }
+  },
+
+  fetchRecentIntents: async () => {
+    try {
+      const intents = await api.fetchRecentIntents();
+      set({ recentIntents: intents });
+    } catch (error: any) {
+      get().showToast('error', error.message || 'Failed to fetch recent intents');
+    }
+  },
+
+  initializeApp: async () => {
+    const { fetchUser, fetchProjects, fetchTasks, fetchConnectedApps, fetchRecentIntents } = get();
+    await Promise.all([
+      fetchUser(),
+      fetchProjects(),
+      fetchTasks(),
+      fetchConnectedApps(),
+      fetchRecentIntents(),
+    ]);
   },
 
   // UI actions

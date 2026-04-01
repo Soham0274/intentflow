@@ -46,6 +46,7 @@ export default function OnboardingScreen() {
     <View style={[styles.container, { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 32 }]}>
       {/* Background glow */}
       <View style={styles.bgGlow} />
+      <View style={styles.bgGlowTeal} />
 
       <Animated.View style={[styles.topSection, { opacity: fadeAnim }]}>
         {/* App name */}
@@ -111,7 +112,7 @@ const GLOW_SIZE = 200;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: '#0A0E1A',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 32,
@@ -124,7 +125,17 @@ const styles = StyleSheet.create({
     height: 320,
     borderRadius: 160,
     backgroundColor: Colors.brandBlue,
-    opacity: 0.06,
+    opacity: 0.08,
+  },
+  bgGlowTeal: {
+    position: 'absolute',
+    bottom: -60,
+    left: -60,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: '#00E5C9',
+    opacity: 0.04,
   },
   topSection: {
     alignItems: 'center',

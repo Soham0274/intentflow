@@ -2,19 +2,20 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 
-type PillVariant = 'online' | 'offline' | 'analyzing' | 'actionReady' | 'listening';
+export type PillVariant = 'online' | 'offline' | 'analyzing' | 'actionReady' | 'listening' | 'lowConfidence';
 
 interface StatusPillProps {
   variant: PillVariant;
   label?:  string;
 }
 
-const PILL_CONFIG: Record<PillVariant, { dot: string; bg: string; text: string; label: string }> = {
-  online:      { dot: '#10B981', bg: 'rgba(16,185,129,0.15)',  text: '#10B981', label: 'System Online'    },
-  offline:     { dot: '#EF4444', bg: 'rgba(239,68,68,0.15)',   text: '#EF4444', label: 'SYSTEM OFFLINE'   },
-  analyzing:   { dot: '#14B8A6', bg: 'rgba(20,184,166,0.15)',  text: '#14B8A6', label: 'System Analyzing' },
-  actionReady: { dot: '#10B981', bg: 'rgba(16,185,129,0.15)',  text: '#10B981', label: 'Action Ready'     },
-  listening:   { dot: '#14B8A6', bg: 'rgba(20,184,166,0.12)',  text: '#14B8A6', label: 'Listening'        },
+const PILL_CONFIG: Record<PillVariant, { dot: string; bg: string; text: string; label: string; border: string }> = {
+  online:      { dot: '#00C896', bg: 'rgba(0,200,150,0.12)',  text: '#00C896', label: 'System Online',    border: 'rgba(0,200,150,0.20)' },
+  offline:     { dot: '#FF4D4D', bg: 'rgba(255,77,77,0.12)',   text: '#FF4D4D', label: 'System Offline',   border: 'rgba(255,77,77,0.20)' },
+  analyzing:   { dot: '#6C63FF', bg: 'rgba(108,99,255,0.12)',  text: '#6C63FF', label: 'System Analyzing', border: 'rgba(108,99,255,0.20)' },
+  actionReady: { dot: '#00C896', bg: 'rgba(0,200,150,0.15)',  text: '#00C896', label: 'Action Ready',     border: 'rgba(0,200,150,0.30)' },
+  listening:   { dot: '#6C63FF', bg: 'rgba(108,99,255,0.12)',  text: '#6C63FF', label: 'Listening',        border: 'rgba(108,99,255,0.20)' },
+  lowConfidence: { dot: '#FF4D4D', bg: '#2A1515',              text: '#FF4D4D', label: 'Low Confidence',   border: 'rgba(255,77,77,0.30)' },
 };
 
 export const StatusPill: React.FC<StatusPillProps> = ({ variant, label }) => {
@@ -22,7 +23,7 @@ export const StatusPill: React.FC<StatusPillProps> = ({ variant, label }) => {
   const { typography } = useTheme();
 
   return (
-    <View style={[styles.pill, { backgroundColor: cfg.bg, borderColor: `${cfg.dot}30` }]}>
+    <View style={[styles.pill, { backgroundColor: cfg.bg, borderColor: cfg.border }]}>
       <View style={[styles.dot, { backgroundColor: cfg.dot }]} />
       <Text style={[typography.statusSM, { color: cfg.text }]}>
         {label ?? cfg.label}
@@ -42,8 +43,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   dot: {
-    width:        7,
-    height:       7,
-    borderRadius: 4,
+    width:        6,
+    height:       6,
+    borderRadius: 3,
   },
 });

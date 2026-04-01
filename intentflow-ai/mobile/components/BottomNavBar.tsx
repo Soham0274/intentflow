@@ -1,128 +1,138 @@
 import React from 'react';
 import { View, TouchableOpacity, StyleSheet, Platform, Text } from 'react-native';
-import { BlurView } from 'expo-blur';
-import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useRouter } from 'expo-router';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export const BottomNavBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation }) => {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const router = useRouter();
 
   return (
-    <BlurView
-      intensity={isDark ? 80 : 100}
-      tint={isDark ? 'dark' : 'light'}
-      style={[styles.blurWrapper, { borderColor: 'rgba(255,255,255,0.05)' }]}
-    >
-      <View style={styles.row}>
-        {state.routes.map((route, index) => {
-          const { options } = descriptors[route.key];
-          const isFocused = state.index === index;
-          const isCenter = route.name === 'capture';
+    <View style={styles.outerContainer}>
+      <View style={[styles.container, { backgroundColor: colors.navBg || '#1A1D2E', borderColor: 'rgba(255,255,255,0.08)' }]}>
+        <View style={styles.row}>
+          {state.routes.map((route, index) => {
+            const { options } = descriptors[route.key];
+            const isFocused = state.index === index;
+            const isCenter = route.name === 'capture';
 
-          const onPress = () => {
-            const event = navigation.emit({
-              type: 'tabPress',
-              target: route.key,
-              canPreventDefault: true,
-            });
+            const onPress = () => {
+              const event = navigation.emit({
+                type: 'tabPress',
+                target: route.key,
+                canPreventDefault: true,
+              });
+              if (!isFocused && !event.defaultPrevented) {
+                navigation.navigate(route.name, route.params);
+              }
+            };
 
-            // The capture button has listeners in _layout to intercept, but we can also manually route if needed.
-            if (!isFocused && !event.defaultPrevented) {
-              navigation.navigate(route.name, route.params);
+            if (isCenter) {
+              return (
+                <TouchableOpacity
+                  key={route.key}
+                  style={[
+                    styles.fab,
+                    { backgroundColor: colors.purple || '#6C63FF', shadowColor: colors.purple || '#6C63FF' },
+                  ]}
+                  onPress={() => router.push('/voice')}
+                  activeOpacity={0.85}
+                >
+                  <LinearGradient
+                    colors={['#8B83FF', '#6C63FF']}
+                    style={styles.fabGradient}
+                  >
+                    <Ionicons name="add" size={32} color="#FFF" />
+                  </LinearGradient>
+                </TouchableOpacity>
+              );
             }
-          };
 
-          const onLongPress = () => {
-            navigation.emit({
-              type: 'tabLongPress',
-              target: route.key,
-            });
-          };
+            // Map route names to correct icons
+            let iconName: any = 'help-circle-outline';
+            if (route.name === 'index') iconName = 'home-variant';
+            else if (route.name === 'collections') iconName = 'view-grid';
+            else if (route.name === 'calendar') iconName = 'calendar-month';
+            else if (route.name === 'alerts') iconName = 'bell';
 
-          if (isCenter) {
             return (
               <TouchableOpacity
                 key={route.key}
-                style={[styles.fab, { backgroundColor: colors.purple }]}
-                onPress={() => router.push('/voice')} // Directly trigger voice entry modal layout
-                activeOpacity={0.85}
+                style={styles.navItem}
+                onPress={onPress}
+                activeOpacity={0.7}
               >
-                <Ionicons name="add" size={28} color="#FFF" />
+                <MaterialCommunityIcons
+                  name={isFocused ? iconName : `${iconName}-outline` as any}
+                  size={24}
+                  color={isFocused ? colors.navActive || '#FFFFFF' : colors.navInactive || '#5A6280'}
+                />
+                {isFocused && (
+                  <View style={[styles.activeDot, { backgroundColor: '#FFFFFF' }]} />
+                )}
               </TouchableOpacity>
             );
-          }
-
-          // Map route names to correct icons
-          let iconName: keyof typeof Ionicons.glyphMap = 'help-circle-outline';
-          let activeIconName: keyof typeof Ionicons.glyphMap = 'help-circle';
-          if (route.name === 'index') {
-            iconName = 'home-outline'; activeIconName = 'home';
-          } else if (route.name === 'collections') {
-            iconName = 'grid-outline'; activeIconName = 'grid';
-          } else if (route.name === 'ambiguity') {
-             iconName = 'bar-chart-outline'; activeIconName = 'bar-chart';
-          } else if (route.name === 'calendar') {
-             iconName = 'calendar-outline'; activeIconName = 'calendar';
-          } else if (route.name === 'alerts') {
-             iconName = 'notifications-outline'; activeIconName = 'notifications';
-          }
-
-          return (
-            <TouchableOpacity
-              key={route.key}
-              style={styles.navItem}
-              onPress={onPress}
-              onLongPress={onLongPress}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name={isFocused ? activeIconName : iconName}
-                size={22}
-                color={isFocused ? colors.textPrimary : colors.textMuted}
-              />
-            </TouchableOpacity>
-          );
-        })}
+          })}
+        </View>
       </View>
-    </BlurView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  blurWrapper: {
-    position:       'absolute',
-    bottom:         Platform.OS === 'ios' ? 34 : 24, // Floating offset
-    left:           24, // Pull in from sides
-    right:          24,
-    borderRadius:   40, // 100% pill shape
-    borderWidth:    1,
-    paddingVertical: 12,
-    overflow:       'hidden',
+  outerContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 20,
+    pointerEvents: 'box-none',
+  },
+  container: {
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingVertical: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
   },
   row: {
-    flexDirection:  'row',
+    flexDirection: 'row',
     justifyContent: 'space-around',
-    alignItems:     'center',
-    paddingHorizontal: 16,
+    alignItems: 'center',
+    paddingHorizontal: 12,
   },
   navItem: {
     alignItems: 'center',
-    flex: 1,
     paddingVertical: 8,
+    flex: 1,
+  },
+  activeDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    marginTop: 4,
   },
   fab: {
-    width:        52,
-    height:       52,
-    borderRadius: 26,
-    alignItems:   'center',
-    justifyContent: 'center',
-    shadowColor: '#7C3AED',
-    shadowOffset: { width: 0, height: 4 },
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    marginTop: -40,
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.5,
-    shadowRadius:  12,
-    elevation: 8,
+    shadowRadius: 15,
+    elevation: 12,
+    overflow: 'hidden',
+  },
+  fabGradient: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

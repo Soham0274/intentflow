@@ -136,11 +136,13 @@ export default function TaskDetailScreen() {
 
         {/* People */}
             {task.people && task.people.length > 0 && (
-              <View style={styles.peopleRow}>
-                <AvatarWithColor initials={task.people.map(p => p[0]).join('')} size={36} color={Colors.accent} />
-                {task.people.map((p, i) => (
-                  <Text key={i} style={styles.personName}>{p}</Text>
-                ))}
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>People</Text>
+                <View style={styles.peopleRow}>
+                  {task.people.map((person, idx) => (
+                    <AvatarWithColor key={idx} initials={person[0]} size={36} gradient />
+                  ))}
+                </View>
               </View>
             )}
 

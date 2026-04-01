@@ -45,6 +45,9 @@ export function Avatar({ initials, size = 48, gradient = true, style }: AvatarPr
   );
 }
 
+// Alias for compatibility with existing code
+export const AvatarWithColor = Avatar;
+
 const styles = StyleSheet.create({
   wrapper: {
     alignItems: 'center',

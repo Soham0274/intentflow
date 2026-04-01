@@ -152,7 +152,7 @@ export function ProfileScreen() {
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         <View style={styles.hero}>
-          <Avatar letter="A" size={80} gradient />
+          <Avatar initials="A" size={80} gradient />
           <Text style={styles.name}>Alex Johnson</Text>
           <Text style={styles.email}>alex@intentflow.ai</Text>
         </View>
@@ -164,14 +164,14 @@ export function ProfileScreen() {
                 <Text style={styles.toggleLabel}>Voice Sensitivity</Text>
                 <Text style={styles.toggleHint}>High sensitivity for quiet environments</Text>
               </View>
-              <Toggle on={voiceSensitivity} onToggle={() => setVoiceSensitivity(!voiceSensitivity)} />
+              <Toggle value={voiceSensitivity} onValueChange={() => setVoiceSensitivity(!voiceSensitivity)} />
             </View>
             <View style={styles.toggleRow}>
               <View>
                 <Text style={styles.toggleLabel}>Auto-Confirm Intent</Text>
                 <Text style={styles.toggleHint}>Skip review for high confidence</Text>
               </View>
-              <Toggle on={autoConfirm} onToggle={() => setAutoConfirm(!autoConfirm)} />
+              <Toggle value={autoConfirm} onValueChange={() => setAutoConfirm(!autoConfirm)} />
             </View>
           </Section>
         </Card>

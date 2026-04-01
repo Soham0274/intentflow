@@ -24,10 +24,10 @@ const ACTION_OPTIONS: ActionOption[] = [
   {
     id: 'crm',
     icon: 'people-outline',
-    iconBg: '#7C3AED25',
-    iconColor: '#9D6EFB',
+    iconBg: '#3B82F625',
+    iconColor: '#60A5FA',
     title: 'CRM Follow-up',
-    description: 'Schedule a reminder in Salesforce to call Arjun Singh regarding the Q4 proposal.',
+    description: 'Schedule a reminder in Salesforce to call the client regarding the Q4 proposal.',
     confidence: 92,
     trigger: '15:00',
     app: 'Salesforce',
@@ -38,7 +38,7 @@ const ACTION_OPTIONS: ActionOption[] = [
     iconBg: '#14B8A620',
     iconColor: '#14B8A6',
     title: 'Slack Message',
-    description: 'Send a Slack message to Arjun about the follow-up.',
+    description: 'Send a Slack message to the team about the follow-up.',
     confidence: 64,
   },
 ];
@@ -74,7 +74,7 @@ export default function AmbiguityScreen() {
         {/* Question */}
         <Text style={[typography.headingLG, { color: colors.textPrimary, marginBottom: 8 }]}>
           Which action should I take for{' '}
-          <Text style={{ color: colors.teal }}>"Arjun"</Text>?
+          <Text style={{ color: colors.teal }}>"contact"</Text>?
         </Text>
         <Text style={[typography.bodyMD, { color: colors.textSecondary, marginBottom: 28 }]}>
           I found multiple potential tasks related to your request.

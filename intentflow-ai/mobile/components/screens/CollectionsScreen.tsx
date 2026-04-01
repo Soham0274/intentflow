@@ -131,7 +131,7 @@ function FAB() {
   return (
     <TouchableOpacity activeOpacity={0.9} style={fabStyles.container}>
       <LinearGradient
-        colors={['#7C6FFF', '#5A4FE8']}
+        colors={['#60A5FA', '#3B82F6']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={fabStyles.gradient}

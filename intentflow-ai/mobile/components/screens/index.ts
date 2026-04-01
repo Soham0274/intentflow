@@ -1,4 +1,4 @@
-export { CaptureSheet } from './CaptureSheet';
+export { default as CaptureSheet } from './CaptureSheet';
 export { VoiceScreen } from './VoiceScreen';
 export { ProfileScreen } from './ProfileScreen';
 export { ErrorScreen } from './ErrorScreen';

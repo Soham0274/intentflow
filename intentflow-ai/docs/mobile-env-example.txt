@@ -1,0 +1,12 @@
+# IntentFlow AI - Mobile Environment Configuration
+# Copy this file to mobile/.env and fill in your actual values
+
+# Backend API URL - MUST include /api suffix
+EXPO_PUBLIC_API_URL=http://localhost:3001/api
+
+# Supabase Configuration
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+
+# Optional: Google OAuth (if using Google sign-in)
+EXPO_PUBLIC_GOOGLE_CLIENT_ID=your-google-client-id

@@ -1,74 +1,85 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Fonts, Radius, Spacing, Shadow } from '@/constants/theme';
-import InputField from '@/components/ui/InputField';
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+} from "react-native-reanimated";
+import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import { supabase } from '@/services/supabase';
-import { Feather } from '@expo/vector-icons';
+import { signInWithGoogle } from '@/services/googleAuth';
+
+import { useColors } from "@/hooks/useColors";
+import { GradientBackground } from "@/components/GradientBackground";
+
+type Mode = "signin" | "create";
 
 export default function LoginScreen() {
-  const router = useRouter();
+  const colors = useColors();
   const insets = useSafeAreaInsets();
   
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  
+  const [mode, setMode] = useState<Mode>("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+
+  const slideAnim = useSharedValue(0);
+  const slideStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: slideAnim.value }],
+  }));
+
+  const switchMode = (m: Mode) => {
+    Haptics.selectionAsync();
+    slideAnim.value = withTiming(m === "signin" ? 0 : 1, { duration: 200 });
+    setMode(m);
+    setErrorMsg("");
+    setSuccessMsg("");
+  };
 
   const handleAuth = async () => {
-    if (!email || !password) {
-      setErrorMsg('Please enter both email and password.');
+    if (!email || !password || (mode === "create" && (!firstName || !lastName))) {
+      setErrorMsg("Please fill in all required fields.");
       return;
     }
-    if (isSignUp && (!firstName || !lastName)) {
-      setErrorMsg('Please enter your first and last name.');
-      return;
-    }
-    
+
     setLoading(true);
-    setErrorMsg('');
-    setSuccessMsg('');
+    setErrorMsg("");
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
     try {
-      if (isSignUp) {
+      if (mode === "create") {
         const { data, error } = await supabase.auth.signUp({ 
           email, 
           password,
-          options: {
-            data: {
-              first_name: firstName,
-              last_name: lastName,
-            }
-          }
+          options: { data: { first_name: firstName, last_name: lastName } }
         });
         if (error) throw error;
-        
-        // If Supabase has email confirmations enabled, no session is granted upon sign up.
         if (data.user && !data.session) {
-          setSuccessMsg('Success! Check your email for the confirmation link to sign in.');
-          return;
+          setSuccessMsg("Check your email for confirmation.");
         }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        // Navigation will be handled by AuthContext in _layout.tsx
       }
-      // AuthContext will automatically redirect to home on successful session acquisition
     } catch (e: any) {
-      setErrorMsg(e.message || 'An error occurred during authentication.');
+      setErrorMsg(e.message || "Authentication failed.");
     } finally {
       setLoading(false);
     }
@@ -76,331 +87,354 @@ export default function LoginScreen() {
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
+    setErrorMsg('');
+    
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: 'intentflow://auth/callback',
-        },
-      });
-      if (error) throw error;
-      // Note: for mobile OAuth, the actual deep link handles the session swap.
-      // Assuming mock success for local demo if deep links aren't connected yet:
-      setTimeout(() => {
-        router.replace('/(tabs)' as any);
-      }, 1000);
-    } catch (error) {
-       console.error('Google Sign In Error', error);
-       setErrorMsg('Google login failed.');
+      const { error, session } = await signInWithGoogle();
+      
+      if (error) {
+        console.error('[Login] Google sign-in error:', error);
+        setErrorMsg(error.message || 'Google login failed');
+      } else if (session) {
+        console.log('[Login] Google sign-in successful');
+        // Navigation is handled by AuthContext in _layout.tsx
+      }
+    } catch (err: any) {
+      console.error('[Login] Unexpected error during Google sign-in:', err);
+      setErrorMsg(err?.message || 'Google login failed');
     } finally {
-       setLoading(false);
+      setLoading(false);
     }
   };
 
+  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Decorative gradient background touches */}
-      <View style={styles.blurCircleTop} />
-      
+    <GradientBackground>
       <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
-          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 32 }]}
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingTop: topPad + 40, paddingBottom: bottomPad + 24 },
+          ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-
-          {/* Card */}
-          <View style={styles.card}>
-            <View style={styles.header}>
-              <Text style={styles.title}>Welcome Back</Text>
-              <Text style={styles.subtitle}>Access your AI workspace</Text>
+          <View style={styles.logoRow}>
+            <View style={[styles.logoIcon, { backgroundColor: colors.primary + "22" }]}>
+              <Feather name="zap" size={22} color={colors.primary} />
             </View>
+            <Text style={[styles.logoText, { color: colors.foreground }]}>
+              IntentFlow
+            </Text>
+          </View>
 
-            {/* Pill Toggle Container */}
-            <View style={styles.pillContainer}>
-              <TouchableOpacity 
-                style={[styles.pillBtn, !isSignUp && styles.pillActive]}
-                onPress={() => {
-                  setIsSignUp(false);
-                  setErrorMsg('');
-                  setSuccessMsg('');
-                }}
-                activeOpacity={0.8}
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.title, { color: colors.foreground }]}>
+              {mode === "signin" ? "Welcome Back" : "Create Account"}
+            </Text>
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+              {mode === "signin" ? "Access your AI workspace" : "Join the AI revolution"}
+            </Text>
+
+            <View style={[styles.tabRow, { backgroundColor: colors.secondary }]}>
+              <TouchableOpacity
+                style={[
+                  styles.tab,
+                  mode === "signin" && {
+                    backgroundColor: colors.foreground,
+                  },
+                ]}
+                onPress={() => switchMode("signin")}
               >
-                <Text style={[styles.pillText, !isSignUp && styles.pillTextActive]}>Sign In</Text>
+                <Text
+                  style={[
+                    styles.tabText,
+                    {
+                      color:
+                        mode === "signin"
+                          ? colors.background
+                          : colors.mutedForeground,
+                    },
+                  ]}
+                >
+                  Sign In
+                </Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.pillBtn, isSignUp && styles.pillActive]}
-                onPress={() => {
-                  setIsSignUp(true);
-                  setErrorMsg('');
-                  setSuccessMsg('');
-                }}
-                activeOpacity={0.8}
+              <TouchableOpacity
+                style={[
+                  styles.tab,
+                  mode === "create" && {
+                    backgroundColor: colors.foreground,
+                  },
+                ]}
+                onPress={() => switchMode("create")}
               >
-                <Text style={[styles.pillText, isSignUp && styles.pillTextActive]}>Create Account</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Inputs Container */}
-            <View style={styles.formArea}>
-              {isSignUp && (
-                <View style={styles.row}>
-                  <InputField
-                    placeholder="First name"
-                    value={firstName}
-                    onChangeText={setFirstName}
-                    icon={<Feather name="user" size={18} color="#666" />}
-                    style={{ flex: 1, marginRight: 8, marginBottom: 12 }}
-                  />
-                  <InputField
-                    placeholder="Last name"
-                    value={lastName}
-                    onChangeText={setLastName}
-                    icon={<Feather name="user" size={18} color="#666" />}
-                    style={{ flex: 1, marginBottom: 12 }}
-                  />
-                </View>
-              )}
-              
-              <InputField
-                placeholder="Email address"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                icon={<Feather name="mail" size={18} color="#666" />}
-                style={styles.inputGap}
-              />
-              
-              <InputField
-                placeholder="Password"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                icon={<Feather name="lock" size={18} color="#666" />}
-              />
-
-              {/* Status Messages */}
-              {errorMsg ? <Text style={styles.errorText}>{errorMsg}</Text> : null}
-              {successMsg ? <Text style={styles.successText}>{successMsg}</Text> : null}
-
-              {/* Forgot Password */}
-              {!isSignUp && (
-                <TouchableOpacity style={styles.forgotRow}>
-                  <Text style={styles.forgotText}>Forgot password?</Text>
-                </TouchableOpacity>
-              )}
-
-              {/* Primary Launch Action */}
-              <TouchableOpacity 
-                style={[styles.launchBtn, (loading) && styles.launchDisabled]}
-                onPress={handleAuth}
-                disabled={loading}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.launchText}>
-                  {loading ? 'Working...' : isSignUp ? 'Create Workspace' : 'Launch Session'}
+                <Text
+                  style={[
+                    styles.tabText,
+                    {
+                      color:
+                        mode === "create"
+                          ? colors.background
+                          : colors.mutedForeground,
+                    },
+                  ]}
+                >
+                  Create Account
                 </Text>
               </TouchableOpacity>
             </View>
 
-            {/* Divider */}
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>OR</Text>
-              <View style={styles.dividerLine} />
+            {mode === "create" && (
+              <View style={styles.nameRow}>
+                <View style={[styles.inputWrapper, { backgroundColor: colors.input, borderColor: colors.border, flex: 1, marginRight: 8 }]}>
+                  <Feather name="user" size={17} color={colors.mutedForeground} />
+                  <TextInput
+                    style={[styles.input, { color: colors.foreground }]}
+                    placeholder="First Name"
+                    placeholderTextColor={colors.mutedForeground}
+                    value={firstName}
+                    onChangeText={setFirstName}
+                  />
+                </View>
+                <View style={[styles.inputWrapper, { backgroundColor: colors.input, borderColor: colors.border, flex: 1 }]}>
+                  <Feather name="user" size={17} color={colors.mutedForeground} />
+                  <TextInput
+                    style={[styles.input, { color: colors.foreground }]}
+                    placeholder="Last Name"
+                    placeholderTextColor={colors.mutedForeground}
+                    value={lastName}
+                    onChangeText={setLastName}
+                  />
+                </View>
+              </View>
+            )}
+
+            <View style={[styles.inputWrapper, { backgroundColor: colors.input, borderColor: colors.border }]}>
+              <Feather name="mail" size={17} color={colors.mutedForeground} />
+              <TextInput
+                style={[styles.input, { color: colors.foreground }]}
+                placeholder="Email address"
+                placeholderTextColor={colors.mutedForeground}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
             </View>
 
-            {/* Google Outer Link */}
+            <View style={[styles.inputWrapper, { backgroundColor: colors.input, borderColor: colors.border }]}>
+              <Feather name="lock" size={17} color={colors.mutedForeground} />
+              <TextInput
+                style={[styles.input, { color: colors.foreground }]}
+                placeholder="Password"
+                placeholderTextColor={colors.mutedForeground}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+              />
+            </View>
+
+            {errorMsg ? <Text style={[styles.errorText, { color: colors.intentError }]}>{errorMsg}</Text> : null}
+            {successMsg ? <Text style={[styles.successText, { color: colors.intentSuccess }]}>{successMsg}</Text> : null}
+
+            {mode === "signin" && (
+              <TouchableOpacity style={styles.forgot} onPress={() => {}}>
+                <Text style={[styles.forgotText, { color: colors.mutedForeground }]}>
+                  Forgot password?
+                </Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
-              onPress={handleGoogleSignIn}
-              style={styles.googleBtn}
+              style={[
+                styles.launchBtn,
+                { backgroundColor: colors.card, borderColor: colors.border },
+                loading && { opacity: 0.7 },
+              ]}
+              onPress={handleAuth}
+              disabled={loading}
               activeOpacity={0.85}
             >
-              <View style={styles.googleLogoContainer}>
-                <Text style={styles.googleIconLetter}>G</Text>
-              </View>
-              <Text style={styles.googleText}>Continue with Google</Text>
+              <Text style={[styles.launchText, { color: colors.foreground }]}>
+                {loading ? "Processing..." : mode === "signin" ? "Launch Session" : "Create Account"}
+              </Text>
             </TouchableOpacity>
 
+            <View style={styles.orRow}>
+              <View style={[styles.orLine, { backgroundColor: colors.border }]} />
+              <Text style={[styles.orText, { color: colors.mutedForeground }]}>OR</Text>
+              <View style={[styles.orLine, { backgroundColor: colors.border }]} />
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.googleBtn,
+                { backgroundColor: colors.input, borderColor: colors.border },
+              ]}
+              onPress={handleGoogleSignIn}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.googleG}>G</Text>
+              <Text style={[styles.googleText, { color: colors.foreground }]}>
+                Continue with Google
+              </Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </View>
+    </GradientBackground>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  container: {
-    flex: 1,
-    backgroundColor: '#0A0A0A', // Deep dark backdrop
-    justifyContent: 'center',
-  },
-  blurCircleTop: {
-    position: 'absolute',
-    top: -150,
-    right: -50,
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: '#2A1A3A',
-    opacity: 0.3,
-  },
   scroll: {
-    paddingHorizontal: Spacing.sm,
-    justifyContent: 'center',
     flexGrow: 1,
+    paddingHorizontal: 20,
+    justifyContent: "center",
+  },
+  logoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 32,
+    justifyContent: "center",
+  },
+  logoIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logoText: {
+    fontSize: 22,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.5,
   },
   card: {
-    backgroundColor: '#161618',
-    borderRadius: 28,
-    padding: 24,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#262628',
-    marginHorizontal: 8,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 28,
-    marginTop: 10,
+    padding: 24,
+    gap: 14,
   },
   title: {
-    fontFamily: Fonts.bold,
-    fontSize: 22,
-    color: Colors.white,
-    marginBottom: 6,
+    fontSize: 26,
+    fontFamily: "Inter_700Bold",
+    textAlign: "center",
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontFamily: Fonts.regular,
     fontSize: 14,
-    color: '#999',
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    marginBottom: 4,
   },
-  pillContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#0D0D0E',
-    borderRadius: Radius.pill,
+  tabRow: {
+    flexDirection: "row",
+    borderRadius: 12,
     padding: 4,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#1E1E1F',
+    gap: 4,
   },
-  pillBtn: {
+  tab: {
     flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderRadius: Radius.pill,
+    paddingVertical: 10,
+    borderRadius: 9,
+    alignItems: "center",
   },
-  pillActive: {
-    backgroundColor: '#2A2A2C',
+  tabText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
   },
-  pillText: {
-    fontFamily: Fonts.medium,
-    fontSize: 13,
-    color: '#888',
+  nameRow: {
+    flexDirection: "row",
+    gap: 8,
   },
-  pillTextActive: {
-    color: Colors.white,
-    fontFamily: Fonts.bold,
+  inputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 10,
   },
-  formArea: {
-    marginBottom: 24,
-  },
-  row: {
-    flexDirection: 'row',
-  },
-  inputGap: { 
-    marginBottom: 12 
-  },
-  forgotRow: {
-    alignItems: 'flex-end',
-    marginTop: 12,
-    marginBottom: 6,
-  },
-  forgotText: {
-    fontFamily: Fonts.medium,
-    fontSize: 12,
-    color: '#888',
+  input: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
+    padding: 0,
   },
   errorText: {
-    fontFamily: Fonts.medium,
-    fontSize: 13,
-    color: '#ef4444',
-    marginTop: 10,
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+    textAlign: "center",
+    marginTop: 8,
   },
   successText: {
-    fontFamily: Fonts.medium,
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+    textAlign: "center",
+    marginTop: 8,
+  },
+  forgot: {
+    alignSelf: "flex-end",
+    marginTop: -4,
+  },
+  forgotText: {
     fontSize: 13,
-    color: '#10b981',
-    marginTop: 10,
+    fontFamily: "Inter_500Medium",
   },
   launchBtn: {
-    backgroundColor: '#303033',
-    paddingVertical: 16,
-    borderRadius: Radius.lg,
-    alignItems: 'center',
-    marginTop: 20,
+    height: 52,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#404044',
-  },
-  launchDisabled: {
-    opacity: 0.6,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
   },
   launchText: {
-    fontFamily: Fonts.bold,
-    color: Colors.white,
-    fontSize: 14,
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
     letterSpacing: 0.3,
   },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
+  orRow: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
-    paddingHorizontal: 20,
+    marginVertical: 2,
   },
-  dividerLine: {
+  orLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#262628',
   },
-  dividerText: {
-    fontFamily: Fonts.medium,
-    fontSize: 11,
-    color: '#555',
-    letterSpacing: 1,
+  orText: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
   },
   googleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: '#303033',
     height: 52,
-    borderRadius: Radius.lg,
-    gap: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
   },
-  googleLogoContainer: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#EA4335',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  googleIconLetter: {
-    fontFamily: Fonts.bold,
-    fontSize: 13,
-    color: Colors.white,
+  googleG: {
+    fontSize: 18,
+    fontFamily: "Inter_700Bold",
+    color: "#4285F4",
   },
   googleText: {
-    fontFamily: Fonts.medium,
-    fontSize: 14,
-    color: '#DDD',
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
   },
 });

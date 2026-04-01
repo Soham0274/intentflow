@@ -242,7 +242,7 @@ export function VoiceScreen() {
       <TopBar
         status="analyzing"
         statusBarLabel="Listening..."
-        rightSlot={<Avatar letter="A" size={36} />}
+        rightSlot={<Avatar initials="A" size={36} />}
       />
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>

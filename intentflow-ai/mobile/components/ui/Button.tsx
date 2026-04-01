@@ -76,7 +76,7 @@ export function OutlineButton({ label, onPress, style, icon }: ButtonProps) {
 const styles = StyleSheet.create({
   container: {
     width: '100%',
-    shadowColor: 'rgba(124, 111, 255, 0.4)',
+    shadowColor: 'rgba(59, 130, 246, 0.4)',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
     shadowRadius: 16,

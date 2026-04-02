@@ -1,13 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const { google } = require('googleapis');
+const config = require('../../config');
 const userRepo = require('../../repositories/user.repository');
 const authMiddleware = require('../../middleware/auth.middleware');
 
 const oauth2Client = new google.auth.OAuth2(
-  process.env.GOOGLE_CLIENT_ID || 'dummy_client_id',
-  process.env.GOOGLE_CLIENT_SECRET || 'dummy_client_secret',
-  process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/auth/google/callback'
+  config.GOOGLE.CLIENT_ID,
+  config.GOOGLE.CLIENT_SECRET,
+  config.GOOGLE.REDIRECT_URI
 );
 
 // GET /api/auth/google/url
@@ -38,7 +39,9 @@ router.post('/callback', authMiddleware, async (req, res, next) => {
       let currentPrefs = {};
       try {
         currentPrefs = await userRepo.getPreferences(userId);
-      } catch (err) {} 
+      } catch {
+        currentPrefs = {};
+      } 
       
       const newPrefs = {
         ...(currentPrefs || {}),

@@ -13,6 +13,7 @@ const authRoutes = require('./auth/index');
 const usersRoutes = require('./users/index');
 const calendarRoutes = require('./calendar/index');
 const healthRoutes = require('./health/index');
+const docsRoutes = require('./docs');
 
 router.use('/nlp', nlpRoutes);
 router.use('/tasks', tasksRoutes);
@@ -22,5 +23,6 @@ router.use('/auth', authRoutes);
 router.use('/users', usersRoutes);
 router.use('/calendar', calendarRoutes);
 router.use('/health', healthRoutes);
+router.use('/', docsRoutes);
 
 module.exports = router;

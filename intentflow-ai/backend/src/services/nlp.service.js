@@ -93,7 +93,7 @@ async function extractTasks(rawText, userId) {
 
   // Map to apply heuristics and defaults
   const tasks = result.map(t => {
-    let conf = t.confidence !== undefined ? Math.round(t.confidence * 100) : 30;
+    const conf = t.confidence !== undefined ? Math.round(t.confidence * 100) : 30;
     delete t.confidence;
     return {
       ...t,
@@ -123,13 +123,17 @@ Text: "${text}"`;
   
   try {
     return JSON.parse(rawClean);
-  } catch(e) {
+  } catch {
     return { intent: 'unknown', priority: 'medium', category: 'work' };
   }
 }
 
 async function extractTasksFromAudio(audioBase64, mimeType, userId) {
-  const prompt = `${SYSTEM_PROMPT}\n\nUser provided an audio recording. Please transcribe it and extract the tasks. If the audio is silent or unintelligible, return an empty array.`;
+  const prompt = `${SYSTEM_PROMPT}
+
+User provided an audio recording. Please transcribe it and extract the tasks. If the audio is silent or unintelligible, return an empty array.
+
+IMPORTANT: Also include the transcribed text in your response as "transcript" field.`;
   
   const audioPart = {
     inlineData: {
@@ -139,10 +143,14 @@ async function extractTasksFromAudio(audioBase64, mimeType, userId) {
   };
 
   let result;
+  let transcript;
   try {
     const rawRes = await geminiModel.generateContent([prompt, audioPart]);
     const text = rawRes.response?.candidates?.[0]?.content?.parts?.[0]?.text
               || rawRes.response?.text?.() || '';
+    
+    // Try to extract transcript from response if Gemini provided it separately
+    transcript = text.split('\n')[0] || '[Audio Input]';
     
     result = parseResponse(text);
   } catch (err) {
@@ -151,7 +159,7 @@ async function extractTasksFromAudio(audioBase64, mimeType, userId) {
   }
 
   const tasks = result.map(t => {
-    let conf = t.confidence !== undefined ? Math.round(t.confidence * 100) : 30;
+    const conf = t.confidence !== undefined ? Math.round(t.confidence * 100) : 30;
     delete t.confidence;
     return {
       ...t,
@@ -161,12 +169,12 @@ async function extractTasksFromAudio(audioBase64, mimeType, userId) {
 
   const queueEntry = await hitlRepository.createHITLEntry({
     user_id: userId,
-    raw_input: "[Audio Input]",
+    raw_input: transcript || "[Audio Input]",
     extracted_tasks: tasks,
     status: 'pending_review'
   });
 
-  return { hitlId: queueEntry.id, tasks };
+  return { hitlId: queueEntry.id, transcript, tasks };
 }
 
 module.exports = {

@@ -1,6 +1,5 @@
 const taskRepository = require('../repositories/task.repository');
-const automationRepository = require('../repositories/automation.repository');
-const { ApiError, NotFoundError } = require('../utils/ApiError');
+const { NotFoundError } = require('../utils/ApiError');
 const automationService = require('./automation.service');
 
 async function getAll(userId, filters = {}) {

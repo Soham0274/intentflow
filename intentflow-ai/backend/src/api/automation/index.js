@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const autoService = require('../../services/automation.service');
-const { success, error } = require('../../utils/responseHelper');
+const { success } = require('../../utils/responseHelper');
 const asyncHandler = require('../../utils/asyncHandler');
 const requireAuth = require('../../middleware/auth.middleware');
 const validate = require('../../middleware/validate.middleware');

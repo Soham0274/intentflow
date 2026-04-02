@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +17,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as Linking from "expo-linking";
 import { router } from "expo-router";
 import { supabase } from '@/services/supabase';
 import { signInWithGoogle } from '@/services/googleAuth';
@@ -38,6 +39,56 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+
+  // Handle OAuth deep link return
+  useEffect(() => {
+    const handleDeepLink = async ({ url }: { url: string }) => {
+      console.log('[Login] Deep link received:', url);
+      
+      // Check if this is an auth callback
+      if (url.includes('auth/callback') || url.includes('access_token')) {
+        setLoading(true);
+        
+        try {
+          // Wait for Supabase to process the session from the URL
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Get the session
+          const { data: { session }, error } = await supabase.auth.getSession();
+          
+          if (error) {
+            console.error('[Login] Session error from deep link:', error);
+            setErrorMsg('Authentication failed. Please try again.');
+            return;
+          }
+          
+          if (session) {
+            console.log('[Login] Session established from deep link');
+            // Auth context will handle navigation, but we can also force it
+            router.replace('/(tabs)');
+          }
+        } catch (err) {
+          console.error('[Login] Deep link handling error:', err);
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+
+    // Listen for deep links
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+    
+    // Check if app was opened via deep link
+    Linking.getInitialURL().then(url => {
+      if (url) {
+        handleDeepLink({ url });
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   const slideAnim = useSharedValue(0);
   const slideStyle = useAnimatedStyle(() => ({

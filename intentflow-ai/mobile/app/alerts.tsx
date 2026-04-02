@@ -38,7 +38,7 @@ export default function AlertsScreen() {
         {/* Smart Nudges Feature Card */}
         <View style={[alStyles.nudgesCard, { backgroundColor: colors.bgCardAlt, borderColor: colors.border }]}>
           <View style={alStyles.nudgesTop}>
-            <View style={[alStyles.nudgesIcon, { backgroundColor: colors.purpleDim }]}>
+            <View style={[alStyles.nudgesIcon, { backgroundColor: colors.purple + '20' }]}>
               <MaterialCommunityIcons name="auto-fix" size={22} color={colors.purple} />
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>

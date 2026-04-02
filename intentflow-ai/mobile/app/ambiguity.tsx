@@ -104,7 +104,7 @@ export default function AmbiguityScreen() {
                   <Ionicons name={opt.icon} size={20} color={opt.iconColor} />
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={[typography.bodyBold, { color: isFirst ? colors.purpleLight : colors.textPrimary, fontSize: 16 }]}>
+                  <Text style={[typography.bodyBold, { color: isFirst ? colors.purple : colors.textPrimary, fontSize: 16 }]}>
                     {opt.title}
                   </Text>
                 </View>

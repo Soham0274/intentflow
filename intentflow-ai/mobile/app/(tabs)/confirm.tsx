@@ -40,7 +40,7 @@ export default function ConfirmScreen() {
       createdAt: new Date().toISOString(),
     });
     setConfirmed(true);
-    setTimeout(() => router.replace("/(tabs)/home"), 1200);
+    setTimeout(() => router.back(), 1200);
   };
 
   return (
@@ -87,51 +87,15 @@ export default function ConfirmScreen() {
 
         <Animated.View entering={FadeInDown.delay(200)} style={styles.cardArea}>
           <IntentCard
-            id="INT-8821"
-            rows={[
-              {
-                label: "Reminder For",
-                value: "Contact",
-                icon: (
-                  <View
-                    style={[
-                      styles.entityAvatar,
-                      { backgroundColor: colors.primary },
-                    ]}
-                  >
-                    <Text style={styles.entityInitial}>C</Text>
-                  </View>
-                ),
-              },
-              {
-                label: "Action",
-                value: "Follow up",
-                icon: (
-                  <View
-                    style={[
-                      styles.actionIcon,
-                      { backgroundColor: colors.primary + "20" },
-                    ]}
-                  >
-                    <Feather name="download" size={14} color={colors.primary} />
-                  </View>
-                ),
-              },
-              {
-                label: "Trigger",
-                value: "Today, 3:00 PM",
-                icon: (
-                  <View
-                    style={[
-                      styles.actionIcon,
-                      { backgroundColor: colors.intentWarning + "20" },
-                    ]}
-                  >
-                    <Feather name="clock" size={14} color={colors.intentWarning} />
-                  </View>
-                ),
-              },
-            ]}
+            task={{
+              id: "INT-8821",
+              entity: "Contact",
+              action: "Follow up",
+              trigger: "Today, 3:00 PM",
+              status: "pending",
+              createdAt: new Date().toISOString(),
+            }}
+            onConfirm={handleConfirm}
           />
         </Animated.View>
 
@@ -244,25 +208,6 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
   },
   cardArea: {},
-  entityAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  entityInitial: {
-    color: "#fff",
-    fontSize: 13,
-    fontFamily: "Inter_700Bold",
-  },
-  actionIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   syncNote: {
     flexDirection: "row",
     alignItems: "flex-start",

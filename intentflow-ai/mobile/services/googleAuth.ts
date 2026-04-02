@@ -2,6 +2,34 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { supabase } from '../services/supabase';
 
+// Required for OAuth session completion
+WebBrowser.maybeCompleteAuthSession();
+
+/**
+ * Extracts session from URL after OAuth redirect
+ */
+async function handleAuthRedirect(url: string) {
+  console.log('[GoogleAuth] Processing redirect URL:', url);
+  
+  // Check if URL contains auth tokens
+  if (url.includes('access_token') || url.includes('refresh_token')) {
+    // Supabase will automatically extract the session from the URL hash
+    const { data: { session }, error } = await supabase.auth.getSession();
+    
+    if (error) {
+      console.error('[GoogleAuth] Session extraction error:', error);
+      return { error, session: null };
+    }
+    
+    if (session) {
+      console.log('[GoogleAuth] Session extracted from URL');
+      return { error: null, session };
+    }
+  }
+  
+  return { error: null, session: null };
+}
+
 /**
  * Initiates Google OAuth sign-in using Expo WebBrowser
  * This properly handles the OAuth flow and returns the session
@@ -38,8 +66,19 @@ export async function signInWithGoogle() {
     console.log('[GoogleAuth] WebBrowser result:', result.type);
 
     if (result.type === 'success') {
-      // Supabase v2.x automatically extracts tokens from URL when session is retrieved
-      // The auth state change listener will pick up the new session
+      // Process the redirect URL to extract session
+      const { error: redirectError, session } = await handleAuthRedirect(result.url);
+      
+      if (redirectError) {
+        return { error: redirectError, session: null };
+      }
+      
+      if (session) {
+        console.log('[GoogleAuth] Successfully signed in:', session.user?.email);
+        return { error: null, session };
+      }
+
+      // Fallback: try to get session directly
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
       if (sessionError) {

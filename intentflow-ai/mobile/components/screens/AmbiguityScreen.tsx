@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Fonts, Spacing, Radius } from '@/constants/theme';
@@ -27,12 +28,14 @@ interface OptionCardProps {
 }
 
 function OptionCard({ option, selected, onSelect }: OptionCardProps) {
+  const cardStyle: ViewStyle = StyleSheet.flatten([
+    optionStyles.card,
+    selected && optionStyles.cardSelected
+  ]);
+
   return (
     <TouchableOpacity onPress={onSelect} activeOpacity={0.85}>
-      <Card style={[
-          optionStyles.card, 
-          selected && optionStyles.cardSelected
-        ]}>
+      <Card style={cardStyle}>
         <View style={optionStyles.header}>
           <View style={optionStyles.iconWrap}>
             <Text style={optionStyles.icon}>{option.icon}</Text>

@@ -96,7 +96,7 @@ export default function TaskCard({ task, onToggle, onDelete }: TaskCardProps) {
           </View>
           <View style={{ flex: 1 }} />
             {task.people && task.people.length > 0 && (
-              <AvatarWithColor initials={task.people.map(p => p[0]).join('')} size={22} color={Colors.accent} />
+              <AvatarWithColor initials={task.people.map(p => p[0]).join('')} size={22} />
             )}
         </View>
       </View>

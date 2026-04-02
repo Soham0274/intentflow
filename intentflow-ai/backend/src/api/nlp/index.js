@@ -42,11 +42,41 @@ router.post('/voice', requireAuth, upload.single('audio'), asyncHandler(async (r
     return res.status(400).json({ success: false, message: 'No audio file provided' });
   }
   
+  console.log('[NLP Voice] Received file:', {
+    mimetype: req.file.mimetype,
+    size: req.file.size
+  });
+  
   const audioBase64 = req.file.buffer.toString('base64');
   const mimeType = req.file.mimetype || 'audio/wav';
   
-  const result = await nlpService.extractTasksFromAudio(audioBase64, mimeType, req.user.id);
-  success(res, result);
+  try {
+    // Try Gemini voice processing first
+    const result = await nlpService.extractTasksFromAudio(audioBase64, mimeType, req.user.id);
+    return success(res, result);
+  } catch (geminiErr) {
+    console.log('[NLP Voice] Gemini failed:', geminiErr.message);
+    console.log('[NLP Voice] Falling back to mock transcription...');
+    
+    // FALLBACK: Create a placeholder and let user type the transcript
+    // This happens when Gemini can't process audio (format issues, API limits, etc.)
+    const fallbackTranscript = '[Voice recorded - transcription unavailable. Please type your intent below.]';
+    
+    const queueEntry = await nlpService.hitlRepository?.createHITLEntry?.({
+      user_id: req.user.id,
+      raw_input: fallbackTranscript,
+      extracted_tasks: [],
+      status: 'pending_review'
+    }) || { id: 'fallback-' + Date.now() };
+    
+    return success(res, { 
+      hitlId: queueEntry.id,
+      transcript: fallbackTranscript,
+      tasks: [],
+      fallback: true,
+      message: 'Voice recorded. Transcription unavailable - please type your intent.'
+    });
+  }
 }));
 
 module.exports = router;

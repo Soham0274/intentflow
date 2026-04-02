@@ -102,6 +102,8 @@ export default function HomeScreen() {
     try {
       const success = await voiceRecorder.startRecording();
       console.log("[Voice] Recording started:", success);
+      // Track recording start time
+      (window as any).recordingStartTime = Date.now();
       if (!success) {
         console.error("[Voice] Failed to start recording");
         setTranscript("Microphone permission denied. Please enable mic access.");
@@ -118,6 +120,17 @@ export default function HomeScreen() {
   const stopListening = async () => {
     console.log("[Voice] Stopping recording...");
     setParseState("parsing");
+    
+    // Add minimum recording time check
+    const recordingDuration = Date.now() - (window as any).recordingStartTime;
+    console.log("[Voice] Recording duration:", recordingDuration, "ms");
+    
+    if (recordingDuration < 1000) {
+      console.warn("[Voice] Recording too short, need at least 1 second");
+      setTranscript("Hold the button longer to record your voice.");
+      setParseState("error");
+      return;
+    }
     
     let uri: string | null = null;
     try {
@@ -380,6 +393,21 @@ export default function HomeScreen() {
               <Text style={[styles.micHintText, { color: colors.mutedForeground }]}>
                 Tap the mic to capture a new intent...
               </Text>
+            </TouchableOpacity>
+
+            {/* Test Voice Recorder Button */}
+            <TouchableOpacity
+              style={[styles.testBtn, { backgroundColor: colors.intentWarning + "15", borderColor: colors.intentWarning + "30" }]}
+              onPress={() => router.push("/test-voice")}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.testBtnIcon, { backgroundColor: colors.intentWarning + "20" }]}>
+                <Feather name="activity" size={18} color={colors.intentWarning} />
+              </View>
+              <Text style={[styles.testBtnText, { color: colors.intentWarning }]}>
+                Test Voice Recorder
+              </Text>
+              <Feather name="chevron-right" size={18} color={colors.intentWarning} />
             </TouchableOpacity>
           </Animated.View>
         )}
@@ -656,6 +684,28 @@ const styles = StyleSheet.create({
   micHintText: {
     fontSize: 14,
     fontFamily: "Inter_400Regular",
+    flex: 1,
+  },
+  testBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 10,
+  },
+  testBtnIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  testBtnText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
     flex: 1,
   },
   listenContent: {

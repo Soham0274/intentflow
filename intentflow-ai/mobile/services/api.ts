@@ -1,7 +1,9 @@
 import axios from 'axios';
 import { supabase } from './supabase';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001/api';
+// For Expo development, use your computer's local IP instead of localhost
+// Find your IP: Windows (ipconfig), Mac/Linux (ifconfig or ipconfig getifaddr en0)
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.x:3001/api';
 
 console.log('[API Config] EXPO_PUBLIC_API_URL:', process.env.EXPO_PUBLIC_API_URL);
 console.log('[API Config] Final API_URL:', API_URL);
@@ -155,11 +157,27 @@ export const processVoice = async (audioUri: string) => {
   console.log('[API] API_URL:', API_URL);
   
   const formData = new FormData();
-  formData.append('audio', {
-    uri: audioUri,
-    name: 'voice_input.m4a',
-    type: 'audio/m4a',
-  } as unknown as Blob);
+  
+  // Handle blob URLs (web) vs file URIs (mobile)
+  if (audioUri.startsWith('blob:')) {
+    // Web: fetch the blob from the URL
+    console.log('[API] Fetching blob from URL...');
+    const response = await fetch(audioUri);
+    const blob = await response.blob();
+    console.log('[API] Blob fetched, size:', blob.size, 'type:', blob.type);
+    
+    // Create a File from the blob - use audio/mp4 for m4a files
+    const mimeType = blob.type === 'audio/m4a' ? 'audio/mp4' : (blob.type || 'audio/mp4');
+    const file = new File([blob], 'voice_input.m4a', { type: mimeType });
+    formData.append('audio', file);
+  } else {
+    // React Native: use the file URI directly
+    formData.append('audio', {
+      uri: audioUri,
+      name: 'voice_input.m4a',
+      type: 'audio/mp4', // Use audio/mp4 for m4a files
+    } as unknown as Blob);
+  }
 
   console.log('[API] Sending FormData to /nlp/voice...');
   

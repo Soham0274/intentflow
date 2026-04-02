@@ -1,5 +1,6 @@
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
+import { Platform } from 'react-native';
 
 export interface RecordingState {
   recording: Audio.Recording | null;
@@ -37,6 +38,7 @@ export class VoiceRecorder {
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY,
         (status) => {
+          console.log('[VoiceRecorder] Status update - duration:', status.durationMillis, 'isRecording:', status.isRecording);
           if (onStatusUpdate && status.durationMillis) {
             onStatusUpdate(status.durationMillis);
           }
@@ -63,6 +65,32 @@ export class VoiceRecorder {
       await this.recording.stopAndUnloadAsync();
       const uri = this.recording.getURI();
       console.log('[VoiceRecorder] Recording stopped, URI:', uri);
+      
+      // Check file exists and get info using new File API (SDK 54+)
+      // Skip on web - expo-file-system is not supported on web platform
+      if (uri && Platform.OS !== 'web') {
+        try {
+          const file = new File(uri);
+          // Access properties directly, no need for getInfoAsync
+          if (file.exists) {
+            console.log('[VoiceRecorder] Audio file info:');
+            console.log('[VoiceRecorder] - exists:', file.exists);
+            console.log('[VoiceRecorder] - size:', file.size, 'bytes');
+            console.log('[VoiceRecorder] - type:', file.type);
+            if (file.size === 0) {
+              console.error('[VoiceRecorder] WARNING: Audio file is empty!');
+            }
+          } else {
+            console.log('[VoiceRecorder] File does not exist yet');
+          }
+        } catch (e) {
+          console.error('[VoiceRecorder] Failed to get file info:', e);
+          // Non-fatal: file info is just for logging
+        }
+      } else if (uri && Platform.OS === 'web') {
+        console.log('[VoiceRecorder] Running on web - skipping file info check');
+      }
+      
       this.recording = null;
       return uri;
     } catch (err) {
@@ -72,10 +100,14 @@ export class VoiceRecorder {
   }
 
   async getAudioBase64(uri: string): Promise<string | null> {
+    // Not supported on web - blob URLs can't be read with expo-file-system
+    if (Platform.OS === 'web') {
+      console.log('[VoiceRecorder] getAudioBase64 not supported on web');
+      return null;
+    }
     try {
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: 'base64',
-      });
+      const file = new File(uri);
+      const base64 = await file.base64();
       return base64;
     } catch (err) {
       console.error('Failed to read audio as base64', err);
@@ -84,10 +116,21 @@ export class VoiceRecorder {
   }
 
   async cleanup(uri: string): Promise<void> {
+    // Skip cleanup on web - expo-file-system not supported
+    if (Platform.OS === 'web') {
+      console.log('[VoiceRecorder] Cleanup skipped on web');
+      return;
+    }
     try {
-      await FileSystem.deleteAsync(uri, { idempotent: true });
+      const file = new File(uri);
+      // Check if file exists before trying to delete
+      if (file.exists) {
+        await file.delete();
+        console.log('[VoiceRecorder] Cleaned up audio file:', uri);
+      }
     } catch (err) {
-      console.error('Failed to cleanup audio file', err);
+      // File might not exist, which is fine
+      console.log('[VoiceRecorder] Cleanup: file already deleted or not found');
     }
   }
 }

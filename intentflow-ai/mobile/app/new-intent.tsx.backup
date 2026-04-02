@@ -1,0 +1,1057 @@
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Animated,
+  Dimensions,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
+import { Feather, Ionicons } from '@expo/vector-icons';
+import { useTheme } from '@/theme/ThemeContext';
+import { Fonts, Radius, Shadow, Spacing } from '@/constants/theme';
+import { voiceRecorder } from '@/services/voiceRecorder';
+import { processVoice, processNLP } from '@/services/api';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Colors matching the unified design
+const COLORS = {
+  bgPrimary: '#0d0d0f',
+  bgSecondary: '#16161a',
+  bgCard: '#1e1e24',
+  bgCardHover: '#25252c',
+  textPrimary: '#ffffff',
+  textSecondary: '#8b8b9a',
+  textMuted: '#6b6b7b',
+  accentPrimary: '#7c3aed',
+  accentSecondary: '#8b5cf6',
+  accentGlow: 'rgba(124, 58, 237, 0.3)',
+  borderSubtle: '#2a2a35',
+  priorityHigh: '#f59e0b',
+  priorityMedium: '#3b82f6',
+  success: '#10b981',
+};
+
+// Types
+interface ParsedData {
+  action: string;
+  entity: string;
+  trigger: string;
+  priority: string;
+  date?: string;
+  time?: string;
+  location?: string;
+  chips: ChipData[];
+  suggestions: SuggestionData[];
+}
+
+interface ChipData {
+  type: 'action' | 'date' | 'time' | 'location' | 'category';
+  label: string;
+  icon: string;
+  primary?: boolean;
+}
+
+interface SuggestionData {
+  text: string;
+  action: string;
+}
+
+// Mock NLP Parser
+const parseIntent = (text: string): ParsedData | null => {
+  if (!text || text.length < 3) return null;
+
+  const lower = text.toLowerCase();
+  const data: ParsedData = {
+    action: 'Task',
+    entity: 'General',
+    trigger: 'Later',
+    priority: 'Medium',
+    chips: [],
+    suggestions: [],
+  };
+
+  // Parse action
+  if (lower.includes('remind')) {
+    data.action = 'Reminder';
+    data.chips.push({ type: 'action', label: 'Reminder', icon: 'bell', primary: true });
+  } else if (lower.includes('buy') || lower.includes('shop') || lower.includes('purchase')) {
+    data.action = 'Shopping';
+    data.entity = 'Shopping';
+    data.chips.push({ type: 'action', label: 'Shopping', icon: 'shopping-cart', primary: true });
+  } else if (lower.includes('schedule') || lower.includes('meet') || lower.includes('call')) {
+    data.action = 'Meeting';
+    data.chips.push({ type: 'action', label: 'Meeting', icon: 'briefcase', primary: true });
+  } else if (lower.includes('fix') || lower.includes('repair') || lower.includes('maintenance')) {
+    data.action = 'Maintenance';
+    data.chips.push({ type: 'action', label: 'Maintenance', icon: 'tool', primary: true });
+  } else if (lower.includes('submit') || lower.includes('send') || lower.includes('report')) {
+    data.action = 'Submit';
+    data.chips.push({ type: 'action', label: 'Work', icon: 'briefcase', primary: true });
+  } else {
+    data.chips.push({ type: 'action', label: 'Task', icon: 'check-square', primary: true });
+  }
+
+  // Parse entity
+  if (lower.includes('groceries')) data.entity = 'Groceries';
+  else if (lower.includes('mom')) data.entity = 'Call Mom';
+  else if (lower.includes('report')) data.entity = 'Quarterly Report';
+  else if (lower.includes('kitchen') || lower.includes('sink')) data.entity = 'Kitchen Sink';
+  else if (lower.includes('team')) data.entity = 'Team Meeting';
+
+  // Parse date
+  if (lower.includes('tomorrow')) {
+    data.date = 'Tomorrow';
+    data.trigger = `Tomorrow, ${data.time || '18:00'}`;
+    data.chips.push({ type: 'date', label: 'Tomorrow', icon: 'calendar' });
+  } else if (lower.includes('friday')) {
+    data.date = 'Friday';
+    data.trigger = 'Friday Evening';
+    data.chips.push({ type: 'date', label: 'Friday', icon: 'calendar' });
+  } else if (lower.includes('sunday')) {
+    data.date = 'Sunday';
+    data.trigger = 'Sunday Morning';
+    data.chips.push({ type: 'date', label: 'Sunday', icon: 'calendar' });
+  }
+
+  // Parse time
+  const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (timeMatch) {
+    let hours = parseInt(timeMatch[1]);
+    const minutes = timeMatch[2] || '00';
+    const ampm = timeMatch[3];
+    
+    if (ampm === 'pm' && hours !== 12) hours += 12;
+    if (ampm === 'am' && hours === 12) hours = 0;
+    
+    const displayTime = ampm ? `${timeMatch[1]}:${minutes} ${ampm.toUpperCase()}` : `${hours}:${minutes}`;
+    
+    data.time = displayTime;
+    data.chips.push({ type: 'time', label: displayTime, icon: 'clock' });
+    
+    if (data.trigger.includes('Tomorrow')) {
+      data.trigger = `Tomorrow, ${displayTime}`;
+    }
+  }
+
+  // Parse location
+  if (lower.includes('whole foods')) {
+    data.location = 'Whole Foods';
+    data.chips.push({ type: 'location', label: 'Whole Foods', icon: 'map-pin' });
+  } else if (lower.includes('home')) {
+    data.location = 'Home';
+    data.chips.push({ type: 'location', label: 'Home', icon: 'home' });
+  }
+
+  // Parse priority
+  if (lower.includes('urgent') || lower.includes('asap') || lower.includes('important')) {
+    data.priority = 'High';
+  } else if (lower.includes('quarterly') || lower.includes('report')) {
+    data.priority = 'High';
+  }
+
+  // AI Suggestions
+  if (lower.includes('groceries')) {
+    data.suggestions.push({ text: 'Add to "Shopping" list', action: 'Add' });
+  }
+  if (lower.includes('sink') || lower.includes('repair') || lower.includes('fix')) {
+    data.suggestions.push({ text: 'Assign to "Chores & upkeep"', action: 'Assign' });
+  }
+  data.suggestions.push({ text: 'Enable Smart Nudges', action: 'Enable' });
+
+  return data;
+};
+
+// Icon mapping for chips
+const getChipIcon = (iconName: string) => {
+  const iconMap: Record<string, { name: any; color: string }> = {
+    'shopping-cart': { name: 'cart', color: COLORS.accentSecondary },
+    'briefcase': { name: 'briefcase', color: COLORS.textSecondary },
+    'home': { name: 'home', color: '#10b981' },
+    'calendar': { name: 'calendar', color: '#60a5fa' },
+    'clock': { name: 'time', color: '#f59e0b' },
+    'map-pin': { name: 'location', color: '#10b981' },
+    'bell': { name: 'notifications', color: COLORS.accentSecondary },
+    'check-square': { name: 'checkbox', color: COLORS.accentSecondary },
+    'tool': { name: 'construct', color: '#ec4899' },
+  };
+
+  return iconMap[iconName] || { name: 'help-circle', color: COLORS.textSecondary };
+};
+
+// Parameter Card Component (Grid layout from Screen 1)
+const ParameterCard = ({ 
+  label, 
+  value, 
+  icon, 
+  color 
+}: { 
+  label: string; 
+  value: string; 
+  icon: string;
+  color: string;
+}) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const onPressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.96,
+      useNativeDriver: true,
+      friction: 8,
+    }).start();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const onPressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      friction: 8,
+    }).start();
+  };
+
+  const getIconName = () => {
+    switch (icon) {
+      case 'action': return 'notifications';
+      case 'entity': return 'cart';
+      case 'trigger': return 'calendar';
+      case 'priority': return 'flag';
+      default: return 'help-circle';
+    }
+  };
+
+  return (
+    <TouchableOpacity
+      activeOpacity={1}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+    >
+      <Animated.View
+        style={[
+          styles.paramCard,
+          { transform: [{ scale: scaleAnim }] }
+        ]}
+      >
+        <Text style={styles.paramLabel}>{label}</Text>
+        <View style={styles.paramValue}>
+          <Ionicons name={getIconName()} size={18} color={color} />
+          <Text style={styles.paramValueText} numberOfLines={1}>{value}</Text>
+        </View>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+};
+
+// Entity Pill Component (from Screen 2)
+const EntityPill = ({ 
+  chip, 
+  onPress 
+}: { 
+  chip: ChipData; 
+  onPress: () => void;
+}) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const iconData = getChipIcon(chip.icon);
+
+  const handlePress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Animated.sequence([
+      Animated.timing(scaleAnim, {
+        toValue: 0.95,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    onPress();
+  };
+
+  return (
+    <TouchableOpacity activeOpacity={1} onPress={handlePress}>
+      <Animated.View
+        style={[
+          styles.entityPill,
+          chip.primary && styles.entityPillPrimary,
+          { transform: [{ scale: scaleAnim }] }
+        ]}
+      >
+        <Ionicons 
+          name={iconData.name} 
+          size={16} 
+          color={chip.primary ? COLORS.accentSecondary : iconData.color} 
+        />
+        <Text style={[styles.entityPillText, chip.primary && styles.entityPillTextPrimary]}>
+          {chip.label}
+        </Text>
+        {!chip.primary && <Feather name="plus" size={14} color={COLORS.textSecondary} />}
+      </Animated.View>
+    </TouchableOpacity>
+  );
+};
+
+// AI Suggestion Item
+const AISuggestionItem = ({ 
+  suggestion, 
+  onApply 
+}: { 
+  suggestion: SuggestionData; 
+  onApply: () => void;
+}) => {
+  return (
+    <View style={styles.aiSuggestionItem}>
+      <Text style={styles.aiSuggestionText}>{suggestion.text}</Text>
+      <TouchableOpacity 
+        style={styles.aiSuggestionBtn}
+        onPress={onApply}
+      >
+        <Text style={styles.aiSuggestionBtnText}>{suggestion.action}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+// Quick Suggestion Chip
+const QuickSuggestionChip = ({ 
+  text, 
+  onPress 
+}: { 
+  text: string; 
+  onPress: () => void;
+}) => {
+  return (
+    <TouchableOpacity style={styles.quickSuggestionChip} onPress={onPress}>
+      <Text style={styles.quickSuggestionText}>"{text}"</Text>
+    </TouchableOpacity>
+  );
+};
+
+// Toast Component
+const Toast = ({ message, visible }: { message: string; visible: boolean }) => {
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+  const translateAnim = useRef(new Animated.Value(-20)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.timing(opacityAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(opacityAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateAnim, {
+          toValue: -20,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [visible]);
+
+  return (
+    <Animated.View 
+      style={[
+        styles.toast,
+        { 
+          opacity: opacityAnim,
+          transform: [{ translateY: translateAnim }]
+        }
+      ]}
+    >
+      <Text style={styles.toastText}>{message}</Text>
+    </Animated.View>
+  );
+};
+
+// Main Component
+export default function NewIntentScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+
+  // State
+  const [textInput, setTextInput] = useState('');
+  const [parsedData, setParsedData] = useState<ParsedData | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [showStructured, setShowStructured] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [showToast, setShowToastState] = useState(false);
+
+  // Refs
+  const inputRef = useRef<TextInput>(null);
+  const sparkleAnim = useRef(new Animated.Value(1)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // Sparkle animation when typing
+  useEffect(() => {
+    if (textInput.length > 0) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(sparkleAnim, {
+            toValue: 1.1,
+            duration: 750,
+            useNativeDriver: true,
+          }),
+          Animated.timing(sparkleAnim, {
+            toValue: 1,
+            duration: 750,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      sparkleAnim.setValue(1);
+    }
+
+    return () => {
+      sparkleAnim.setValue(1);
+    };
+  }, [textInput.length > 0]);
+
+  // Debounced parsing
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      const data = parseIntent(textInput);
+      setParsedData(data);
+      setShowStructured(!!data);
+    }, 400);
+
+    return () => clearTimeout(timeoutId);
+  }, [textInput]);
+
+  // Toast helper
+  const showToastMessage = (message: string) => {
+    setToastMessage(message);
+    setShowToastState(true);
+    setTimeout(() => setShowToastState(false), 2500);
+  };
+
+  // Voice recording
+  const startRecording = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsRecording(true);
+    
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    const success = await voiceRecorder.startRecording();
+    if (!success) {
+      setIsRecording(false);
+      Alert.alert('Error', 'Failed to start recording. Please check microphone permissions.');
+    }
+  };
+
+  const stopRecording = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsRecording(false);
+    pulseAnim.setValue(1);
+    
+    const uri = await voiceRecorder.stopRecording();
+    if (uri) {
+      setIsProcessing(true);
+      try {
+        const response = await processVoice(uri);
+        console.log('[Voice] Full response:', JSON.stringify(response, null, 2));
+        
+        // Backend returns { success: true, data: { hitlId, transcript, tasks } }
+        if (response.success && response.data) {
+          const { transcript, tasks } = response.data;
+          
+          if (transcript) {
+            setTextInput(transcript);
+            // Parse the transcript to extract entities for display
+            const data = parseIntent(transcript);
+            setParsedData(data);
+            setShowStructured(!!data);
+          }
+          
+          if (tasks && tasks.length > 0) {
+            showToastMessage(`Extracted ${tasks.length} task(s)`);
+          }
+        } else {
+          Alert.alert('Error', response.message || 'Failed to process voice input');
+        }
+        
+        voiceRecorder.cleanup(uri);
+      } catch (error: any) {
+        console.error('[Voice] Processing error:', error);
+        Alert.alert('Error', error.message || 'Failed to process voice input');
+      }
+      setIsProcessing(false);
+    }
+  };
+
+  // Save intent
+  const handleSave = () => {
+    if (!textInput.trim()) {
+      showToastMessage('Please enter an intent first');
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    showToastMessage('Intent saved successfully');
+    setTimeout(() => router.back(), 500);
+  };
+
+  // Quick suggestions
+  const quickSuggestions = [
+    { text: 'Schedule meeting...', full: 'Schedule a meeting with the team tomorrow at 2pm' },
+    { text: 'Call mom Sunday...', full: 'Remind me to call mom on Sunday morning' },
+    { text: 'Buy groceries...', full: 'Buy groceries from Whole Foods after work' },
+    { text: 'Submit report...', full: 'Submit the quarterly report by Friday evening' },
+  ];
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Toast */}
+      <Toast message={toastMessage} visible={showToast} />
+
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.headerBtn}
+          onPress={() => router.back()}
+        >
+          <Feather name="x" size={24} color={COLORS.textPrimary} />
+        </TouchableOpacity>
+        
+        <Text style={styles.headerTitle}>New Intent</Text>
+        
+        <TouchableOpacity 
+          style={styles.saveBtn}
+          onPress={handleSave}
+        >
+          <Text style={styles.saveBtnText}>Save</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Main Content */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardAvoid}
+      >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Input Section */}
+          <View style={styles.inputSection}>
+            <Text style={styles.inputLabel}>Natural Language Input</Text>
+            <View style={styles.inputContainer}>
+              <TextInput
+                ref={inputRef}
+                style={styles.inputField}
+                placeholder="What's on your mind? e.g. Remind me to buy groceries tomorrow at 6pm..."
+                placeholderTextColor={COLORS.textMuted}
+                value={textInput}
+                onChangeText={setTextInput}
+                multiline
+                maxLength={500}
+                autoFocus
+              />
+              <Animated.View 
+                style={[
+                  styles.aiIndicator,
+                  { transform: [{ scale: sparkleAnim }] }
+                ]}
+              >
+                <Ionicons 
+                  name="sparkles" 
+                  size={20} 
+                  color={textInput.length > 0 ? COLORS.accentSecondary : COLORS.textMuted} 
+                />
+              </Animated.View>
+            </View>
+          </View>
+
+          {/* Quick Suggestions */}
+          <View style={styles.suggestionsSection}>
+            <Text style={styles.suggestionsLabel}>Quick Suggestions</Text>
+            <View style={styles.suggestionsList}>
+              {quickSuggestions.map((suggestion, index) => (
+                <QuickSuggestionChip
+                  key={index}
+                  text={suggestion.text}
+                  onPress={() => setTextInput(suggestion.full)}
+                />
+              ))}
+            </View>
+          </View>
+
+          {/* Structured Output */}
+          {showStructured && parsedData && (
+            <Animated.View style={styles.structuredSection}>
+              {/* Entity Pills Row */}
+              <Text style={styles.sectionTitle}>Extracted Details</Text>
+              <View style={styles.chipsContainer}>
+                {parsedData.chips.map((chip, index) => (
+                  <EntityPill
+                    key={index}
+                    chip={chip}
+                    onPress={() => showToastMessage(`Edit ${chip.label}`)}
+                  />
+                ))}
+              </View>
+
+              {/* AI Suggestions Panel */}
+              {parsedData.suggestions.length > 0 && (
+                <View style={styles.aiSuggestionsPanel}>
+                  <View style={styles.aiSuggestionsHeader}>
+                    <Ionicons name="sparkles" size={18} color={COLORS.accentSecondary} />
+                    <Text style={styles.aiSuggestionsTitle}>Intent Suggestions</Text>
+                  </View>
+                  {parsedData.suggestions.map((suggestion, index) => (
+                    <AISuggestionItem
+                      key={index}
+                      suggestion={suggestion}
+                      onApply={() => showToastMessage(`${suggestion.action}d successfully`)}
+                    />
+                  ))}
+                </View>
+              )}
+
+              {/* Parsed Parameters Grid */}
+              <Text style={styles.sectionTitle}>Parsed Parameters</Text>
+              <View style={styles.paramsGrid}>
+                <ParameterCard
+                  label="Action"
+                  value={parsedData.action}
+                  icon="action"
+                  color={COLORS.accentSecondary}
+                />
+                <ParameterCard
+                  label="Entity"
+                  value={parsedData.entity}
+                  icon="entity"
+                  color={COLORS.success}
+                />
+                <ParameterCard
+                  label="Trigger"
+                  value={parsedData.trigger}
+                  icon="trigger"
+                  color="#60a5fa"
+                />
+                <ParameterCard
+                  label="Priority"
+                  value={parsedData.priority}
+                  icon="priority"
+                  color={parsedData.priority === 'High' ? COLORS.priorityHigh : COLORS.priorityMedium}
+                />
+              </View>
+            </Animated.View>
+          )}
+
+          {/* Processing Indicator */}
+          {isProcessing && (
+            <View style={styles.processingContainer}>
+              <ActivityIndicator size="large" color={COLORS.accentPrimary} />
+              <Text style={styles.processingText}>Processing voice...</Text>
+            </View>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* Footer */}
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 10 }]}>
+        <TouchableOpacity
+          style={[styles.dictateBtn, isRecording && styles.dictateBtnRecording]}
+          onPress={isRecording ? stopRecording : startRecording}
+        >
+          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+            <Ionicons 
+              name={isRecording ? "mic" : "mic-outline"} 
+              size={20} 
+              color={isRecording ? '#ef4444' : COLORS.textSecondary} 
+            />
+          </Animated.View>
+          <Text style={[styles.dictateText, isRecording && styles.dictateTextRecording]}>
+            {isRecording ? 'Listening...' : 'Dictate'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.magicBtn}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            showToastMessage('AI Assistant is always on');
+          }}
+        >
+          <Ionicons name="sparkles" size={22} color="#fff" />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.bgPrimary,
+  },
+  keyboardAvoid: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  headerBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    letterSpacing: -0.01,
+  },
+  saveBtn: {
+    backgroundColor: COLORS.accentPrimary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 24,
+    shadowColor: COLORS.accentPrimary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  saveBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  // Input Section
+  inputSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    color: COLORS.textMuted,
+    marginBottom: 12,
+  },
+  inputContainer: {
+    backgroundColor: COLORS.bgCard,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.borderSubtle,
+    position: 'relative',
+  },
+  inputField: {
+    color: COLORS.textPrimary,
+    fontSize: 18,
+    lineHeight: 26,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    paddingRight: 40,
+    fontFamily: Fonts.medium,
+  },
+  aiIndicator: {
+    position: 'absolute',
+    right: 16,
+    top: '50%',
+    marginTop: -16,
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Suggestions Section
+  suggestionsSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  suggestionsLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    color: COLORS.textMuted,
+    marginBottom: 12,
+  },
+  suggestionsList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  quickSuggestionChip: {
+    backgroundColor: COLORS.bgCard,
+    borderWidth: 1,
+    borderColor: COLORS.borderSubtle,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  quickSuggestionText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+  },
+
+  // Structured Section
+  structuredSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginBottom: 16,
+  },
+
+  // Chips Container
+  chipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 20,
+  },
+  entityPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.bgCard,
+    borderWidth: 1,
+    borderColor: COLORS.borderSubtle,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 24,
+  },
+  entityPillPrimary: {
+    backgroundColor: 'rgba(124, 58, 237, 0.15)',
+    borderColor: COLORS.accentPrimary,
+  },
+  entityPillText: {
+    color: COLORS.textPrimary,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  entityPillTextPrimary: {
+    color: COLORS.accentSecondary,
+  },
+
+  // AI Suggestions Panel
+  aiSuggestionsPanel: {
+    backgroundColor: 'rgba(124, 58, 237, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(124, 58, 237, 0.3)',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+  },
+  aiSuggestionsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  aiSuggestionsTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.accentSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  aiSuggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderSubtle,
+  },
+  aiSuggestionText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    flex: 1,
+  },
+  aiSuggestionBtn: {
+    backgroundColor: COLORS.bgCard,
+    borderWidth: 1,
+    borderColor: COLORS.borderSubtle,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginLeft: 12,
+  },
+  aiSuggestionBtnText: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+
+  // Parameters Grid
+  paramsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  paramCard: {
+    width: (SCREEN_WIDTH - 52) / 2,
+    backgroundColor: COLORS.bgCard,
+    borderWidth: 1,
+    borderColor: COLORS.borderSubtle,
+    borderRadius: 14,
+    padding: 14,
+  },
+  paramLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    color: COLORS.textMuted,
+    marginBottom: 8,
+  },
+  paramValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  paramValueText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: COLORS.textPrimary,
+    flex: 1,
+  },
+
+  // Processing
+  processingContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  processingText: {
+    marginTop: 12,
+    color: COLORS.textSecondary,
+    fontSize: 14,
+  },
+
+  // Footer
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: 'transparent',
+  },
+  dictateBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: COLORS.bgCard,
+    borderWidth: 1,
+    borderColor: COLORS.borderSubtle,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+  },
+  dictateBtnRecording: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderColor: '#ef4444',
+  },
+  dictateText: {
+    color: COLORS.textSecondary,
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  dictateTextRecording: {
+    color: '#ef4444',
+  },
+  magicBtn: {
+    width: 52,
+    height: 52,
+    backgroundColor: COLORS.accentPrimary,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: COLORS.accentPrimary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+
+  // Toast
+  toast: {
+    position: 'absolute',
+    top: 80,
+    left: '50%',
+    transform: [{ translateX: -100 }],
+    backgroundColor: COLORS.bgCard,
+    borderWidth: 1,
+    borderColor: COLORS.borderSubtle,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    zIndex: 1000,
+    width: 200,
+    alignItems: 'center',
+  },
+  toastText: {
+    color: COLORS.textPrimary,
+    fontSize: 14,
+  },
+});

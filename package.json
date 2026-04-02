@@ -1,4 +1,17 @@
 {
+  "name": "intentflow",
+  "version": "1.0.0",
+  "description": "IntentFlow AI - Unified dev environment",
+  "scripts": {
+    "dev": "concurrently \"npm run backend\" \"npm run mobile\"",
+    "backend": "cd intentflow-ai/backend && npm run dev",
+    "mobile": "cd intentflow-ai/mobile && npx expo start",
+    "backend:prod": "cd intentflow-ai/backend && npm start",
+    "install:all": "npm install && cd intentflow-ai/backend && npm install && cd ../mobile && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.0"
   }

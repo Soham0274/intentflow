@@ -238,7 +238,7 @@ export default function HITLScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setTimeout(() => {
       setIsRetrying(false);
-      router.replace("/(tabs)/home");
+      router.back();
     }, 1200);
   };
 
@@ -275,7 +275,7 @@ export default function HITLScreen() {
 
     setStage("success");
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setTimeout(() => router.replace("/(tabs)/home"), 1400);
+    setTimeout(() => router.back(), 1400);
   };
 
   return (

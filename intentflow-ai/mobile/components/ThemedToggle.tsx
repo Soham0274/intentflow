@@ -38,10 +38,7 @@ export const ThemedToggle: React.FC<ThemedToggleProps> = ({ value, onChange }) =
           styles.track, 
           { backgroundColor: bgColor },
           value && {
-            shadowColor: '#6C63FF',
-            shadowOpacity: 0.4,
-            shadowRadius: 10,
-            shadowOffset: { width: 0, height: 0 },
+            boxShadow: '0px 0px 10px rgba(108,99,255,0.4)',
             elevation: 8,
           }
         ]}
@@ -65,10 +62,7 @@ const styles = StyleSheet.create({
     height:       22,
     borderRadius: 11,
     backgroundColor: '#FFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius:  3,
+    boxShadow: '0px 2px 3px rgba(0,0,0,0.25)',
     elevation: 3,
   },
 });

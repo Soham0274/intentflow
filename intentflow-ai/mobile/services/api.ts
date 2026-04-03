@@ -3,14 +3,14 @@ import { supabase } from './supabase';
 
 // For Expo development, use your computer's local IP instead of localhost
 // Find your IP: Windows (ipconfig), Mac/Linux (ifconfig or ipconfig getifaddr en0)
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.x:3001/api';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.6.130:3001/api';
 
 console.log('[API Config] EXPO_PUBLIC_API_URL:', process.env.EXPO_PUBLIC_API_URL);
 console.log('[API Config] Final API_URL:', API_URL);
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 10000,
+  timeout: 15000,
 });
 
 // Automatically inject Supabase auth token into all requests
@@ -23,6 +23,31 @@ api.interceptors.request.use(async (config) => {
 }, (error) => {
   return Promise.reject(error);
 });
+
+// Auto-refresh on 401 — retry request with fresh token
+api.interceptors.response.use(
+  (res) => res,
+  async (err) => {
+    const originalRequest = err.config;
+
+    // If 401 and we haven't already retried, attempt token refresh
+    if (err.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      try {
+        const { data: { session } } = await supabase.auth.refreshSession();
+        if (session?.access_token) {
+          originalRequest.headers['Authorization'] = `Bearer ${session.access_token}`;
+          return api.request(originalRequest);
+        }
+      } catch (refreshError) {
+        console.error('[API] Token refresh failed:', refreshError);
+      }
+    }
+
+    return Promise.reject(err);
+  }
+);
 
 // USER APIs
 export const fetchUser = async () => {
@@ -163,19 +188,51 @@ export const processVoice = async (audioUri: string) => {
     // Web: fetch the blob from the URL
     console.log('[API] Fetching blob from URL...');
     const response = await fetch(audioUri);
+    if (!response.ok) throw new Error('Failed to fetch audio blob');
     const blob = await response.blob();
     console.log('[API] Blob fetched, size:', blob.size, 'type:', blob.type);
     
-    // Create a File from the blob - use audio/mp4 for m4a files
-    const mimeType = blob.type === 'audio/m4a' ? 'audio/mp4' : (blob.type || 'audio/mp4');
-    const file = new File([blob], 'voice_input.m4a', { type: mimeType });
+    // Determine file extension and MIME type based on blob type
+    let fileExtension = 'm4a';
+    let mimeType = blob.type || 'audio/mp4';
+    
+    if (blob.type?.includes('mp3') || blob.type?.includes('mpeg')) {
+      fileExtension = 'mp3';
+      mimeType = 'audio/mpeg';
+    } else if (blob.type?.includes('wav')) {
+      fileExtension = 'wav';
+      mimeType = 'audio/wav';
+    } else if (blob.type?.includes('webm')) {
+      fileExtension = 'webm';
+      mimeType = 'audio/webm';
+    } else if (blob.type === 'audio/m4a') {
+      fileExtension = 'm4a';
+      mimeType = 'audio/mp4';
+    }
+    
+    const file = new File([blob], `voice_input.${fileExtension}`, { type: mimeType });
     formData.append('audio', file);
   } else {
     // React Native: use the file URI directly
+    // Determine file extension from URI
+    let fileExtension = 'm4a';
+    let mimeType = 'audio/mp4';
+    
+    if (audioUri.includes('.mp3')) {
+      fileExtension = 'mp3';
+      mimeType = 'audio/mpeg';
+    } else if (audioUri.includes('.wav')) {
+      fileExtension = 'wav';
+      mimeType = 'audio/wav';
+    } else if (audioUri.includes('.webm')) {
+      fileExtension = 'webm';
+      mimeType = 'audio/webm';
+    }
+    
     formData.append('audio', {
       uri: audioUri,
-      name: 'voice_input.m4a',
-      type: 'audio/mp4', // Use audio/mp4 for m4a files
+      name: `voice_input.${fileExtension}`,
+      type: mimeType,
     } as unknown as Blob);
   }
 
@@ -191,9 +248,21 @@ export const processVoice = async (audioUri: string) => {
     console.log('[API] Response:', response.data);
     return response.data;
   } catch (error: any) {
+    // Structured error logging
     console.error('[API] Error in processVoice:', error.message);
-    console.error('[API] Error response:', error.response?.data);
-    console.error('[API] Error status:', error.response?.status);
+
+    if (error.response) {
+      console.error('[API] Error response:', error.response.data);
+      console.error('[API] Error status:', error.response.status);
+
+      // User-friendly messages per status
+      if (error.response.status === 401) throw new Error('Please log in again');
+      if (error.response.status === 429) throw new Error('Too many requests. Wait a moment.');
+      if (error.response.status === 500) throw new Error('Server error. Please try again.');
+    }
+
+    if (error.code === 'ECONNABORTED') throw new Error('Request timed out. Check your connection.');
+
     throw error;
   }
 };

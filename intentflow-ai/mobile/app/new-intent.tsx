@@ -786,10 +786,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 24,
-    shadowColor: COLORS.accentPrimary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
+    boxShadow: '0px 4px 12px rgba(124,58,237,0.3)',
     elevation: 8,
   },
   saveBtnText: {
@@ -1052,10 +1049,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: COLORS.accentPrimary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
+    boxShadow: '0px 4px 12px rgba(124,58,237,0.3)',
     elevation: 8,
   },
 

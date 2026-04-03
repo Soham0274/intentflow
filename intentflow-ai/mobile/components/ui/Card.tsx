@@ -28,7 +28,7 @@ export function Card({ children, style, onPress, selected = false }: CardProps) 
   const cardStyle = [
     styles.card,
     { backgroundColor: theme.card, borderColor: theme.border },
-    selected && { borderColor: theme.accent, backgroundColor: 'rgba(59,130,246,0.10)', shadowColor: '#3B82F6', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+    selected && { borderColor: theme.accent, backgroundColor: 'rgba(59,130,246,0.10)', boxShadow: '0px 4px 12px rgba(59,130,246,0.3)', elevation: 6 },
     style,
   ];
 

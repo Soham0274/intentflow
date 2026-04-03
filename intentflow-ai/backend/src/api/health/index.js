@@ -15,7 +15,10 @@ router.get('/', async (req, res) => {
     uptime: process.uptime(),
     environment: process.env.NODE_ENV || 'development',
     version: process.env.npm_package_version || '1.0.0',
-    checks: {}
+    checks: {
+      gemini: process.env.GEMINI_API_KEY ? 'configured' : 'missing key',
+      groq:   process.env.GROQ_API_KEY   ? 'configured' : 'missing key',
+    }
   };
 
   try {

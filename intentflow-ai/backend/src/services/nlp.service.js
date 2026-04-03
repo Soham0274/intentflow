@@ -1,23 +1,19 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const axios = require('axios');
+const FormData = require('form-data');
 const config = require('../config/index');
 const hitlRepository = require('../repositories/hitl.repository');
 const taskRepository = require('../repositories/task.repository');
 const { NLPValidationError } = require('../utils/ApiError');
 const { z } = require('zod');
 
-// ─── Gemini Clients ────────────────────────────────────────────────────────────
+// ─── Gemini Client ────────────────────────────────────────────────────────────
 const genAI = new GoogleGenerativeAI(config.GEMINI.API_KEY);
 
-// Standard model for text tasks (low token budget is fine)
 const textModel = genAI.getGenerativeModel({
   model: config.GEMINI.MODEL,
-  generationConfig: { temperature: 0.3, maxOutputTokens: 1024 }
-});
-
-// Separate model for audio — needs more tokens for transcript + JSON
-const audioModel = genAI.getGenerativeModel({
-  model: 'gemini-2.5-flash',          // audio-capable model
-  generationConfig: { temperature: 0.2, maxOutputTokens: 4096 }
+  generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+  //                              ↑ lower = more deterministic JSON output
 });
 
 // ─── Zod Schema ───────────────────────────────────────────────────────────────
@@ -32,76 +28,114 @@ const taskSchema = z.object({
   confidence:  z.number().min(0).max(1).default(0.5)
 });
 
-const audioResponseSchema = z.object({
-  transcript: z.string().default(''),
-  tasks:      z.array(taskSchema).default([])
-});
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function extractJSON(raw) {
-  // Strip markdown fences
-  let clean = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-
-  // Try direct parse first
-  try { return JSON.parse(clean); } catch { /* ignore parse error */ }
-
-  // Try to find a JSON object {...} — handle truncated by finding complete object
-  const objMatch = clean.match(/\{[\s\S]*?\}(?=\s*$|\s*\{)/) || clean.match(/\{[\s\S]*\}/);
-  if (objMatch) {
-    try { return JSON.parse(objMatch[0]); } catch { /* ignore parse error */ }
-  }
-
-  // Try to find a JSON array [...]
+  const clean = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+  try { return JSON.parse(clean); } catch { /* try next */ }
+  const objMatch = clean.match(/\{[\s\S]*\}/);
+  if (objMatch) { try { return JSON.parse(objMatch[0]); } catch { /* try next */ } }
   const arrMatch = clean.match(/\[[\s\S]*\]/);
-  if (arrMatch) {
-    try { return JSON.parse(arrMatch[0]); } catch { /* ignore parse error */ }
-  }
-
-  // Try to repair truncated JSON by adding closing braces
-  if (clean.includes('{') && !clean.includes('}')) {
-    try { return JSON.parse(clean + '}}'); } catch { /* ignore parse error */ }
-    try { return JSON.parse(clean + '}'); } catch { /* ignore parse error */ }
-  }
-
+  if (arrMatch) { try { return JSON.parse(arrMatch[0]); } catch { /* try next */ } }
   return null;
 }
 
-function formatTasks(tasks = []) {
-  return tasks.map(t => {
+// NOTE: formatTasks is called ONCE inside extractTasks().
+// Do NOT call it again in extractTasksFromAudio — result.tasks are already formatted.
+function formatTasks(rawTasks = []) {
+  return rawTasks.map(t => {
     const conf = t.confidence !== undefined ? Math.round(t.confidence * 100) : 30;
-    const { confidence, ...rest } = t;
-    return { ...rest, confidence_score: conf };
+    const taskCopy = { ...t };
+    delete taskCopy.confidence;
+    return { ...taskCopy, confidence_score: conf };
   });
 }
 
-/**
- * Persist extracted tasks to the tasks table
- */
-async function persistExtractedTasks(extractedTasks, userId, hitlId) {
-  const tasksToCreate = extractedTasks.map(t => ({
-    title: t.title,
-    description: t.description,
-    due_date: t.due_date,
-    due_time: t.due_time,
-    priority: t.priority || 'medium',
-    category: t.category || 'work',
-    status: 'pending_review',
-    user_id: userId,
-    hitl_id: hitlId,
+// ─── Groq Transcription ───────────────────────────────────────────────────────
+async function transcribeWithGroq(audioBase64, mimeType) {
+  // BUG FIX: config.GROQ may not exist in config/index.js — fall back to process.env
+  const groqApiKey = config.GROQ?.API_KEY || process.env.GROQ_API_KEY;
+  const groqModel  = config.GROQ?.AUDIO_MODEL || process.env.GROQ_AUDIO_MODEL || 'whisper-large-v3-turbo';
+
+  if (!groqApiKey) {
+    throw new Error('GROQ_API_KEY is not set. Add it to your .env file.');
+  }
+
+  // BUG FIX: Whisper requires a filename with the correct extension to detect codec
+  const ext = mimeType.includes('webm') ? 'webm'
+            : mimeType.includes('mp4')  ? 'mp4'
+            : mimeType.includes('wav')  ? 'wav'
+            : mimeType.includes('ogg')  ? 'ogg'
+            : mimeType.includes('mp3')  ? 'mp3'
+            : mimeType.includes('mpeg') ? 'mp3'
+            : 'webm';
+
+  const buffer = Buffer.from(audioBase64, 'base64');
+  const form   = new FormData();
+  form.append('file', buffer, { filename: `audio.${ext}`, contentType: mimeType });
+  form.append('model', groqModel);
+  form.append('response_format', 'verbose_json'); // includes word timestamps
+  form.append('language', 'en');                   // force English, faster + more accurate
+  form.append('temperature', '0');                 // deterministic transcription
+
+  console.warn('[GROQ:Transcription] Model:', groqModel, '| File: audio.' + ext, '| Size:', Math.round(buffer.length / 1024) + 'KB');
+
+  try {
+    const response = await axios.post(
+      'https://api.groq.com/openai/v1/audio/transcriptions',
+      form,
+      {
+        headers: { ...form.getHeaders(), Authorization: `Bearer ${groqApiKey}` },
+        timeout: 30000
+      }
+    );
+    const text = response.data?.text || '';
+    console.warn('[GROQ:Transcription] ✅ Result:', text.substring(0, 120));
+    return text;
+  } catch (err) {
+    const errorMsg = err.response?.data?.error?.message || err.message;
+    console.error('[GROQ:Transcription] ❌ Error:', errorMsg);
+    const groqError = new Error(`Groq API error: ${errorMsg}`);
+    groqError.cause = err;
+    throw groqError;
+  }
+}
+
+// ─── Task Persistence ─────────────────────────────────────────────────────────
+async function persistExtractedTasks(formattedTasks, userId, hitlId) {
+  if (!formattedTasks.length) return [];
+
+  const tasksToCreate = formattedTasks.map(t => ({
+    title:          t.title,
+    description:    t.description || null,
+    due_date:       t.due_date && t.due_time ? `${t.due_date}T${t.due_time}:00Z` : (t.due_date || null),
+    priority:       t.priority   || 'medium',
+    category:       t.category   || 'work',
+    status:         'pending_review',
+    user_id:        userId,
+    hitl_id:        hitlId,
     extracted_from: t.people?.length ? `mentioned: ${t.people.join(', ')}` : null
   }));
 
-  if (tasksToCreate.length === 0) return [];
-
   try {
-    return await taskRepository.bulkCreate(tasksToCreate);
+    // BUG FIX: bulkCreate may not exist — fall back to individual creates
+    if (typeof taskRepository.bulkCreate === 'function') {
+      return await taskRepository.bulkCreate(tasksToCreate);
+    }
+    const created = [];
+    for (const task of tasksToCreate) {
+      try { created.push(await taskRepository.create(task)); } catch (e) {
+        console.warn('[NLP:Persistence] Failed to create task:', task.title, e.message);
+      }
+    }
+    return created;
   } catch (err) {
-    console.warn('[NLP] Failed to persist tasks to tasks table:', err.message);
+    console.warn('[NLP:Persistence] Persistence error:', err.message);
     return [];
   }
 }
 
-// ─── Text Prompts ─────────────────────────────────────────────────────────────
+// ─── Prompts ──────────────────────────────────────────────────────────────────
 const TASK_EXTRACTION_PROMPT = `You are a task extraction AI. Extract structured tasks from natural language.
 
 Return ONLY a valid JSON array — no markdown, no explanation:
@@ -118,84 +152,59 @@ Return ONLY a valid JSON array — no markdown, no explanation:
   }
 ]
 
-Date rules:
-- tomorrow      → next day's date
-- next Friday   → coming Friday's date
-- morning       → 09:00, afternoon → 14:00, evening → 18:00, tonight → 20:00
-- EOD           → today 17:00, ASAP → today high priority
-
-Priority rules:
-- urgent / ASAP → high
-- sometime / when you can → low
-- default → medium`;
-
-const AUDIO_PROMPT = `You are a voice task extraction AI. You will receive an audio recording.
-
-Step 1: Transcribe the audio exactly.
-Step 2: Extract any tasks, reminders, or to-dos mentioned.
-
-Return ONLY this JSON object — no markdown, no backticks, nothing else:
-{
-  "transcript": "exact words spoken in the audio",
-  "tasks": [
-    {
-      "title":       "concise task name (max 80 chars)",
-      "description": "extra details or null",
-      "due_date":    "YYYY-MM-DD or null",
-      "due_time":    "HH:MM (24h) or null",
-      "priority":    "high" | "medium" | "low",
-      "category":    "work" | "personal" | "urgent" | "routine" | "health",
-      "people":      [],
-      "confidence":  number between 0.0 and 1.0
-    }
-  ]
-}
-
-Date rules: tomorrow=next day, morning=09:00, afternoon=14:00, evening=18:00, tonight=20:00, ASAP=today+high priority.
-
-If the audio is silent, unclear, or has no tasks → return: {"transcript": "", "tasks": []}
-IMPORTANT: Return ONLY the JSON object above. Nothing before or after it.`;
+Date rules: tomorrow=next day, next Friday=coming Friday, morning=09:00, afternoon=14:00, evening=18:00, tonight=20:00, EOD=today 17:00, ASAP=today+high
+Priority: urgent/ASAP=high | sometime/when you can=low | default=medium`;
 
 // ─── Service Functions ────────────────────────────────────────────────────────
 
-/**
- * Extract tasks from plain text
- */
-async function extractTasks(rawText, userId) {
-  const prompt = `${TASK_EXTRACTION_PROMPT}\n\nUser input: "${rawText}"\n\nJSON array:`;
+async function extractTasks(rawText, userId, persist = true) {
+  console.warn('[GEMINI:Extraction] Analysing:', rawText.substring(0, 80));
 
-  let tasks = [];
+  // Inject today's date so Gemini can calculate relative dates correctly
+  const today = new Date().toISOString().split('T')[0];
+  const prompt = `Today's date is ${today}.\n\n${TASK_EXTRACTION_PROMPT}\n\nUser input: "${rawText}"\n\nJSON array:`;
+
+  let formattedTasks = [];
   try {
     const rawRes = await textModel.generateContent(prompt);
-    const text = rawRes.response?.text?.() || '';
+    const text   = rawRes.response?.text?.() || '';
     const parsed = extractJSON(text);
 
     if (Array.isArray(parsed)) {
       const validated = z.array(taskSchema).safeParse(parsed);
-      tasks = validated.success ? validated.data : [];
+      // formatTasks called here — only once per extraction
+      formattedTasks = validated.success ? formatTasks(validated.data) : [];
+      console.warn(`[GEMINI:Extraction] ✅ ${formattedTasks.length} tasks extracted`);
+    } else {
+      console.warn('[GEMINI:Extraction] ⚠️ No valid JSON array returned');
     }
   } catch (err) {
-    throw new NLPValidationError('Gemini text error: ' + err.message);
+    console.error('[GEMINI:Extraction] ❌ Error:', err.message);
+    const validationError = new NLPValidationError('Gemini text error: ' + err.message);
+    validationError.cause = err;
+    throw validationError;
   }
 
-  const formattedTasks = formatTasks(tasks);
+  // Split tasks by confidence threshold for HITL review
+  const highConfidence = formattedTasks.filter(t => t.confidence_score >= 50);
+  const needsReview    = formattedTasks.filter(t => t.confidence_score < 50);
 
-  const queueEntry = await hitlRepository.createHITLEntry({
-    user_id: userId,
-    raw_input: rawText,
-    extracted_tasks: formattedTasks,
-    status: 'pending_review'
+  if (needsReview.length > 0) {
+    console.warn(`[GEMINI:Extraction] ⚠️ ${needsReview.length} task(s) below confidence threshold → HITL review`);
+  }
+
+  if (!persist) {
+    return { tasks: formattedTasks, highConfidence, needsReview }; // audio pipeline handles persistence
+  }
+
+  const queueEntry     = await hitlRepository.createHITLEntry({
+    user_id: userId, raw_input: rawText, extracted_tasks: formattedTasks, status: 'pending_review'
   });
+  const persistedTasks = await persistExtractedTasks(highConfidence, userId, queueEntry.id);
 
-  // Persist tasks to the tasks table
-  const persistedTasks = await persistExtractedTasks(formattedTasks, userId, queueEntry.id);
-
-  return { hitlId: queueEntry.id, tasks: formattedTasks, persistedCount: persistedTasks.length };
+  return { hitlId: queueEntry.id, tasks: formattedTasks, highConfidence, needsReview, persistedCount: persistedTasks.length };
 }
 
-/**
- * Lightweight intent classification
- */
 async function parseIntent(text) {
   const prompt = `Classify this text. Return ONLY JSON, no markdown:
 {"intent": "string", "priority": "high|medium|low", "category": "work|personal|urgent|routine|health"}
@@ -203,111 +212,54 @@ Text: "${text}"`;
 
   try {
     const rawRes = await textModel.generateContent(prompt);
-    const raw = rawRes.response?.text?.() || '';
-    const parsed = extractJSON(raw);
-    if (parsed && parsed.intent) return parsed;
-  } catch { /* ignore intent parse errors, return default */ }
+    const parsed = extractJSON(rawRes.response?.text?.() || '');
+    if (parsed?.intent) return parsed;
+  } catch { /* fall through */ }
 
   return { intent: 'unknown', priority: 'medium', category: 'work' };
 }
 
-/**
- * Transcribe audio and extract tasks using Gemini multimodal
- */
 async function extractTasksFromAudio(audioBase64, mimeType, userId) {
-  // Gemini supports: audio/wav, audio/mp3, audio/aiff, audio/aac, audio/ogg, audio/flac, audio/webm
-  const safeMimeType = mimeType || 'audio/webm';
-
-  console.log('[NLP Audio] Starting audio processing');
-  console.log('[NLP Audio] MimeType:', safeMimeType);
-  console.log('[NLP Audio] Base64 size:', audioBase64.length, 'chars (~', Math.round(audioBase64.length * 0.75 / 1024), 'KB)');
-  console.log('[NLP Audio] Model: gemini-2.5-flash');
-  console.log('[NLP Audio] API Key present:', !!config.GEMINI.API_KEY);
-
-  let transcript = '';
-  let tasks = [];
-
-  try {
-    const audioPart = {
-      inlineData: {
-        data: audioBase64,
-        mimeType: safeMimeType
-      }
-    };
-
-    console.log('[NLP Audio] Calling Gemini...');
-    const rawRes = await audioModel.generateContent([audioPart, { text: AUDIO_PROMPT }]);
-    console.log('[NLP Audio] Gemini responded');
-
-    const rawText = rawRes.response?.text?.() || '';
-
-    console.log('[NLP Audio] Raw response:');
-    console.log('--- START ---');
-    console.log(rawText);
-    console.log('--- END ---');
-
-    if (!rawText.trim()) {
-      console.warn('[NLP Audio] Empty response from Gemini');
-      transcript = '';
-      tasks = [];
-    } else {
-      const parsed = extractJSON(rawText);
-
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const validated = audioResponseSchema.safeParse(parsed);
-        if (validated.success) {
-          transcript = validated.data.transcript;
-          tasks = validated.data.tasks;
-          console.log('[NLP Audio] Valid response parsed');
-          console.log('[NLP Audio] Transcript:', transcript);
-          console.log('[NLP Audio] Tasks found:', tasks.length);
-        } else {
-          console.warn('[NLP Audio] Schema validation failed:', validated.error.errors);
-          // Best effort extraction
-          transcript = parsed.transcript || '';
-          tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
-        }
-      } else {
-        // Gemini returned something unexpected — treat entire text as transcript
-        console.warn('[NLP Audio] Could not parse JSON, using raw text as transcript');
-        transcript = rawText.substring(0, 500);
-        tasks = [];
-      }
-    }
-
-  } catch (err) {
-    console.error('[NLP Audio] Gemini error:', err.message);
-
-    // Check for specific Gemini error types
-    if (err.message?.includes('SAFETY')) {
-      console.error('[NLP Audio] Safety filter triggered');
-    } else if (err.message?.includes('INVALID_ARGUMENT')) {
-      console.error('[NLP Audio] Invalid audio format — Gemini rejected the file');
-    } else if (err.message?.includes('quota') || err.message?.includes('429')) {
-      console.error('[NLP Audio] Rate limit / quota exceeded');
-    }
-
-    throw new NLPValidationError('Audio processing failed: ' + err.message);
+  if (!audioBase64) {
+    throw new Error('No audio data provided to NLP service');
   }
 
-  const formattedTasks = formatTasks(tasks);
+  const safeMimeType = mimeType || 'audio/webm';
+  console.warn('[NLP:Audio] Pipeline start | Size:', Math.round(audioBase64.length * 0.75 / 1024) + 'KB | Mime:', safeMimeType);
 
-  const queueEntry = await hitlRepository.createHITLEntry({
-    user_id: userId,
-    raw_input: transcript || '[Audio Input - no transcript]',
-    extracted_tasks: formattedTasks,
-    status: 'pending_review'
+  // STEP 1: Groq Whisper → transcript
+  const transcript = await transcribeWithGroq(audioBase64, safeMimeType).catch((err) => {
+    console.error('[NLP:Audio] ❌ Transcription failed:', err.message);
+    const transcriptionError = new NLPValidationError('Transcription failed: ' + err.message);
+    transcriptionError.cause = err;
+    throw transcriptionError;
   });
 
-  // Persist tasks to the tasks table
-  const persistedTasks = await persistExtractedTasks(formattedTasks, userId, queueEntry.id);
+  if (!transcript?.trim()) {
+    throw new NLPValidationError('No speech detected in audio');
+  }
 
-  return {
-    hitlId:     queueEntry.id,
-    transcript,
-    tasks:      formattedTasks,
-    persistedCount: persistedTasks.length
-  };
+  // STEP 2: Gemini → tasks (persist=false, no DB write yet)
+  const extractionResult = await extractTasks(transcript, userId, false).catch((err) => {
+    console.error('[NLP:Audio] ❌ Extraction failed:', err.message);
+    const parsingError = new NLPValidationError('Semantic parsing failed: ' + err.message);
+    parsingError.cause = err;
+    throw parsingError;
+  });
+
+  const tasks          = extractionResult.tasks || []; // already formatted — do NOT call formatTasks again
+  const highConfidence = extractionResult.highConfidence || [];
+  const needsReview    = extractionResult.needsReview || [];
+
+  // STEP 3: Single DB write
+  const queueEntry     = await hitlRepository.createHITLEntry({
+    user_id: userId, raw_input: transcript, extracted_tasks: tasks, status: 'pending_review'
+  });
+  const persistedTasks = await persistExtractedTasks(highConfidence, userId, queueEntry.id);
+
+  console.warn('[NLP:Audio] ✅ Complete | HITL:', queueEntry.id, '| Tasks:', tasks.length, '| Persisted:', persistedTasks.length);
+
+  return { hitlId: queueEntry.id, transcript, tasks, highConfidence, needsReview, persistedCount: persistedTasks.length };
 }
 
 module.exports = { extractTasks, parseIntent, extractTasksFromAudio };

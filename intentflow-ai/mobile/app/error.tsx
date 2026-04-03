@@ -36,7 +36,7 @@ export default function ConnectionErrorScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: '#0A0B0F' }]}>
-      <View style={styles.redTint} pointerEvents="none" />
+      <View style={[styles.redTint, { pointerEvents: 'none' }]} />
 
       <View style={styles.topBar}>
         <TouchableOpacity style={[styles.menuBtn, { backgroundColor: '#1E2130' }]}>

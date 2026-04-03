@@ -68,7 +68,7 @@ export default function EditReminderScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Background atmosphere */}
-      <View style={edStyles.atmosphereContainer} pointerEvents="none">
+      <View style={[edStyles.atmosphereContainer, { pointerEvents: 'none' }]}>
         <View style={[edStyles.atmosphereGlow, { backgroundColor: colors.blueDim }]} />
       </View>
 
@@ -81,7 +81,7 @@ export default function EditReminderScreen() {
           <Text style={[typography.statusSM, { color: colors.blue }]}>Intent Confirmed</Text>
           <Text style={[typography.bodyBold, { color: colors.textPrimary, marginTop: 2 }]}>Edit Reminder</Text>
         </View>
-        <TouchableOpacity style={[edStyles.doneBtn, { backgroundColor: colors.blue, shadowColor: colors.blue, shadowOpacity: 0.4, shadowRadius: 10, shadowOffset: { width: 0, height: 2 }, elevation: 6 }]} onPress={handleDone}>
+        <TouchableOpacity style={[edStyles.doneBtn, { backgroundColor: colors.blue, boxShadow: `0px 2px 10px ${colors.blue}66`, elevation: 6 }]} onPress={handleDone}>
           <Text style={[typography.bodyBold, { color: '#FFF' }]}>Done</Text>
         </TouchableOpacity>
       </View>
@@ -148,7 +148,7 @@ export default function EditReminderScreen() {
           style={[typography.bodyMD, { color: colors.textPrimary, flex: 1 }]}
         />
         <Ionicons name="mic-outline" size={20} color={colors.textSecondary} style={{ marginRight: 12 }} />
-        <TouchableOpacity style={[edStyles.sendBtn, { backgroundColor: colors.blue, shadowColor: colors.blue, shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 5 }]}>
+        <TouchableOpacity style={[edStyles.sendBtn, { backgroundColor: colors.blue, boxShadow: `0px 2px 8px ${colors.blue}66`, elevation: 5 }]}>
           <Ionicons name="arrow-up" size={20} color="#FFF" />
         </TouchableOpacity>
       </View>

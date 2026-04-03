@@ -36,7 +36,7 @@ export const BottomNavBar: React.FC<BottomTabBarProps> = ({ state, descriptors, 
                   key={route.key}
                   style={[
                     styles.fab,
-                    { backgroundColor: colors.purple || '#6C63FF', shadowColor: colors.purple || '#6C63FF' },
+                    { backgroundColor: colors.purple || '#6C63FF' },
                   ]}
                   onPress={() => router.push('/voice')}
                   activeOpacity={0.85}
@@ -96,10 +96,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     paddingVertical: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
+    boxShadow: '0px 10px 20px rgba(0,0,0,0.3)',
     elevation: 10,
   },
   row: {
@@ -124,9 +121,7 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 30,
     marginTop: -40,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5,
-    shadowRadius: 15,
+    boxShadow: '0px 6px 15px rgba(108,99,255,0.5)',
     elevation: 12,
     overflow: 'hidden',
   },

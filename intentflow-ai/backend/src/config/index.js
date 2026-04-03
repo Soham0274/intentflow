@@ -3,7 +3,7 @@
  */
 require('dotenv').config();
 const { z } = require('zod');
-const logger = require('../utils/logger');
+// const logger = require('../utils/logger'); // Removed to break circular dependency
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -15,6 +15,9 @@ const envSchema = z.object({
   
   GEMINI_API_KEY: z.string().min(1, 'GEMINI_API_KEY is required'),
   GEMINI_MODEL: z.string().default('gemini-1.5-flash'),
+  
+  GROQ_API_KEY: z.string().min(1, 'GROQ_API_KEY is required'),
+  GROQ_AUDIO_MODEL: z.string().default('whisper-large-v3-turbo'),
   
   N8N_BASE_URL: z.string().url().optional().or(z.literal('')),
   N8N_API_KEY: z.string().optional(),
@@ -49,6 +52,8 @@ try {
     SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     GEMINI_MODEL: process.env.GEMINI_MODEL,
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
+    GROQ_AUDIO_MODEL: process.env.GROQ_AUDIO_MODEL,
     N8N_BASE_URL: process.env.N8N_BASE_URL,
     N8N_API_KEY: process.env.N8N_API_KEY,
     N8N_WEBHOOK_SECRET: process.env.N8N_WEBHOOK_SECRET,
@@ -78,6 +83,11 @@ try {
     GEMINI: {
       API_KEY: env.GEMINI_API_KEY,
       MODEL: env.GEMINI_MODEL,
+    },
+    
+    GROQ: {
+      API_KEY: env.GROQ_API_KEY,
+      AUDIO_MODEL: env.GROQ_AUDIO_MODEL,
     },
     
     N8N: {
@@ -112,11 +122,7 @@ try {
     SHUTDOWN_TIMEOUT: env.GRACEFUL_SHUTDOWN_TIMEOUT
   };
 
-  logger.info({
-    message: 'Configuration validated successfully',
-    environment: config.NODE_ENV,
-    port: config.PORT
-  });
+  console.warn(`[Config] Validated successfully in ${env.NODE_ENV} mode on port ${env.PORT}`);
 
 } catch (error) {
   if (error instanceof z.ZodError) {

@@ -106,9 +106,7 @@ const styles = StyleSheet.create({
   },
   focused: {
     borderColor: 'rgba(108, 99, 255, 0.5)',
-    shadowColor: '#6C63FF',
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
+    boxShadow: '0px 0px 10px rgba(108,99,255,0.1)',
     elevation: 2,
   },
   errorBorder: {

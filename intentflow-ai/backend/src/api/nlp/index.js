@@ -5,9 +5,12 @@ const { success } = require('../../utils/responseHelper');
 const asyncHandler = require('../../utils/asyncHandler');
 const requireAuth = require('../../middleware/auth.middleware');
 const validate = require('../../middleware/validate.middleware');
+const { nlpLimiter } = require('../../middleware/rateLimit.middleware');
 const { z } = require('zod');
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
+
+const hitlRepository = require('../../repositories/hitl.repository');
 
 // Schema
 const extractSchema = z.object({ text: z.string().min(3).max(2000) });
@@ -21,28 +24,28 @@ const validateSchema = z.object({
   })
 });
 
-router.post('/extract', requireAuth, validate(extractSchema), asyncHandler(async (req, res) => {
+router.post('/extract', requireAuth, nlpLimiter, validate(extractSchema), asyncHandler(async (req, res) => {
   const result = await nlpService.extractTasks(req.body.text, req.user.id);
   success(res, result);
 }));
 
-router.post('/parse', requireAuth, validate(parseSchema), asyncHandler(async (req, res) => {
+router.post('/parse', requireAuth, nlpLimiter, validate(parseSchema), asyncHandler(async (req, res) => {
   const result = await nlpService.parseIntent(req.body.text);
   success(res, result);
 }));
 
-router.post('/validate', requireAuth, validate(validateSchema), asyncHandler(async (req, res) => {
+router.post('/validate', requireAuth, nlpLimiter, validate(validateSchema), asyncHandler(async (req, res) => {
   // Re-run parse intent on stringified edited obj to 'validate' it if needed
   const result = await nlpService.parseIntent(JSON.stringify(req.body.task));
   success(res, result);
 }));
 
-router.post('/voice', requireAuth, upload.single('audio'), asyncHandler(async (req, res) => {
+router.post('/voice', requireAuth, nlpLimiter, upload.single('audio'), asyncHandler(async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: 'No audio file provided' });
   }
   
-  console.log('[NLP Voice] Received file:', {
+  console.warn('[NLP Voice] Received file:', {
     mimetype: req.file.mimetype,
     size: req.file.size
   });
@@ -51,23 +54,22 @@ router.post('/voice', requireAuth, upload.single('audio'), asyncHandler(async (r
   const mimeType = req.file.mimetype || 'audio/wav';
   
   try {
-    // Try Gemini voice processing first
+    // Groq transcribes audio, then Gemini extracts tasks from transcript
     const result = await nlpService.extractTasksFromAudio(audioBase64, mimeType, req.user.id);
     return success(res, result);
-  } catch (geminiErr) {
-    console.log('[NLP Voice] Gemini failed:', geminiErr.message);
-    console.log('[NLP Voice] Falling back to mock transcription...');
+  } catch (err) {
+    console.error('[NLP Voice] Processing failed:', err.message);
+    console.error('[NLP Voice] Falling back to manual transcription...');
     
     // FALLBACK: Create a placeholder and let user type the transcript
-    // This happens when Gemini can't process audio (format issues, API limits, etc.)
     const fallbackTranscript = '[Voice recorded - transcription unavailable. Please type your intent below.]';
     
-    const queueEntry = await nlpService.hitlRepository?.createHITLEntry?.({
+    const queueEntry = await hitlRepository.createHITLEntry({
       user_id: req.user.id,
       raw_input: fallbackTranscript,
       extracted_tasks: [],
       status: 'pending_review'
-    }) || { id: 'fallback-' + Date.now() };
+    });
     
     return success(res, { 
       hitlId: queueEntry.id,

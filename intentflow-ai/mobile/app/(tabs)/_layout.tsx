@@ -30,7 +30,13 @@ function TabButton({
   return (
     <TouchableOpacity
       style={styles.tabBtn}
-      onPress={() => router.push(`/(tabs)/${name}` as any)}
+      onPress={() => {
+        if (name === "index") {
+          router.replace("/(tabs)/" as any);
+        } else {
+          router.push(`/(tabs)/${name}` as any);
+        }
+      }}
       activeOpacity={0.65}
     >
       <View style={[styles.iconWrap, active && { backgroundColor: colors.primary + "20" }]}>
@@ -58,7 +64,8 @@ function GlassTabBar() {
   const pathname = usePathname();
   const { triggerVoice } = useApp();
 
-  const activeRoute = pathname.replace("/(tabs)/", "").replace(/\/$/, "") || "index";
+  const activeRoute = pathname.split("/").pop() || "index";
+
 
   // Hide navbar completely on profile screen - show only profile content
   if (activeRoute === "profile") {
@@ -81,14 +88,13 @@ function GlassTabBar() {
         styles.floatOuter,
         {
           bottom: bottomOffset,
-          shadowColor: colors.primary,
+          pointerEvents: 'box-none',
         },
       ]}
-      pointerEvents="box-none"
     >
       <View style={styles.micFabWrap}>
         <TouchableOpacity
-          style={[styles.micFab, { shadowColor: colors.primary }]}
+          style={[styles.micFab]}
           onPress={handleMic}
           activeOpacity={0.82}
         >
@@ -185,9 +191,7 @@ const styles = StyleSheet.create({
     left: 14,
     right: 14,
     overflow: "visible",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.28,
-    shadowRadius: 24,
+    boxShadow: '0px 8px 24px rgba(108,99,255,0.28)',
     elevation: 16,
   },
   micFabWrap: {
@@ -200,9 +204,7 @@ const styles = StyleSheet.create({
     pointerEvents: "box-none",
   },
   micFab: {
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.55,
-    shadowRadius: 18,
+    boxShadow: '0px 6px 18px rgba(108,99,255,0.55)',
     elevation: 14,
   },
   micInner: {

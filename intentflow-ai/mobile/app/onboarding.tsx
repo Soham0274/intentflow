@@ -178,10 +178,7 @@ const styles = StyleSheet.create({
     height: ORB_SIZE,
     borderRadius: ORB_SIZE / 2,
     overflow: 'hidden',
-    shadowColor: Colors.brandBlue,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 40,
+    boxShadow: '0px 0px 40px rgba(108,99,255,0.8)',
     elevation: 16,
   },
   orb: {

@@ -45,7 +45,7 @@ export default function ToastContainer() {
   if (toasts.length === 0) return null;
 
   return (
-    <View style={styles.container} pointerEvents="box-none">
+    <View style={[styles.container, { pointerEvents: 'box-none' }]}>
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} />
       ))}

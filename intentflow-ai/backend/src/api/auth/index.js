@@ -56,22 +56,14 @@ router.get('/callback', asyncHandler(async (req, res) => {
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) return res.status(500).json({ error: error.message });
 
-  // Sync user table
+  // Sync user table using upsert to handle race conditions safely
   const user = data.user;
-  const { data: existingUser } = await supabase
-    .from('users')
-    .select('id')
-    .eq('oauth_id', user.id)
-    .single();
-
-  if (!existingUser) {
-    await supabase.from('users').insert({
-      oauth_id: user.id,
-      email: user.email,
-      name: user.user_metadata?.full_name || '',
-      avatar_url: user.user_metadata?.avatar_url || ''
-    });
-  }
+  await supabase.from('users').upsert({
+    oauth_id: user.id,
+    email: user.email,
+    name: user.user_metadata?.full_name || '',
+    avatar_url: user.user_metadata?.avatar_url || ''
+  }, { onConflict: 'oauth_id' });
 
   res.redirect(`${config.APP.FRONTEND_URL}/dashboard?token=${data.session.access_token}`);
 }));

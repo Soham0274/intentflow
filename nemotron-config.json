@@ -1,0 +1,16 @@
+{
+  "modes": {
+    "plan": {
+      "model": "ollama/glm5",
+      "prompt": "You are an architecture advisor. Think through problems carefully. No code unless asked."
+    },
+    "build": {
+      "model": "ollama/nemotron",
+      "prompt": "You are a senior engineer. Write complete, production-ready code."
+    },
+    "review": {
+      "model": "kimi/kimi-k2.5",
+      "prompt": "Review this code carefully for bugs, type errors, and missing edge cases."
+    }
+  }
+}

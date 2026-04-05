@@ -156,14 +156,17 @@ export default function HomeScreen() {
       console.log("[Voice] NLP response:", response);
       
       if (response.success) {
-        const transcriptText = response.transcript || response.text || "";
+        // Backend wraps result in { success, data: { transcript, tasks, ... } }
+        const resData = response.data || response;
+        const transcriptText = resData.transcript || resData.text || "";
         console.log("[Voice] Transcript:", transcriptText);
         setTranscript(transcriptText);
         
-        if (response.tasks && response.tasks.length > 0) {
-          console.log("[Voice] Extracted tasks:", response.tasks);
-          setExtractedTasks(response.tasks);
-          setConfidence(response.tasks[0].confidence_score || 85);
+        const resTasks = resData.tasks || [];
+        if (resTasks.length > 0) {
+          console.log("[Voice] Extracted tasks:", resTasks);
+          setExtractedTasks(resTasks);
+          setConfidence(resTasks[0].confidence_score || 85);
         } else {
           console.log("[Voice] No tasks extracted");
         }

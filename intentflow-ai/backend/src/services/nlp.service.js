@@ -113,8 +113,7 @@ async function persistExtractedTasks(formattedTasks, userId, hitlId) {
     category:       t.category   || 'work',
     status:         'pending_review',
     user_id:        userId,
-    hitl_id:        hitlId,
-    extracted_from: t.people?.length ? `mentioned: ${t.people.join(', ')}` : null
+    hitl_id:        hitlId
   }));
 
   try {

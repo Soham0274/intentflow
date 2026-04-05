@@ -14,7 +14,7 @@ const envSchema = z.object({
   SUPABASE_SECRET_KEY: z.string().min(1, 'SUPABASE_SECRET_KEY is required'),
   
   GEMINI_API_KEY: z.string().min(1, 'GEMINI_API_KEY is required'),
-  GEMINI_MODEL: z.string().default('gemini-1.5-flash'),
+  GEMINI_MODEL: z.string().default('gemini-2.5-pro'),
   
   GROQ_API_KEY: z.string().min(1, 'GROQ_API_KEY is required'),
   GROQ_AUDIO_MODEL: z.string().default('whisper-large-v3-turbo'),

@@ -31,8 +31,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 12,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.elevated,
     ...Shadow.card,
   },
   value: {

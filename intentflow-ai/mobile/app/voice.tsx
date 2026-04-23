@@ -29,6 +29,7 @@ import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { useTheme } from "../theme/ThemeContext";
+import { useApp } from "@/context/AppContext";
 import { processVoice, processNLP, createTask } from "@/services/api";
 import { voiceRecorder } from "@/services/voiceRecorder";
 import { Fonts, Radius } from "@/constants/theme";
@@ -151,6 +152,7 @@ function EntityTag({ entity }: { entity: Entity }) {
 
 export default function IntentCreationScreen() {
   const { colors } = useTheme();
+  const { autoConfirm, refreshTasks } = useApp();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [screen, setScreen] = useState<Screen>("voice");
@@ -216,8 +218,30 @@ export default function IntentCreationScreen() {
             setActionType(t.category?.toLowerCase() || "work");
             setPriority(t.priority === "high" ? "High" : t.priority === "medium" ? "Medium" : "Low");
             if (t.due_date) {
-               setDate(t.due_date.split(' ')[0]);
-               setTime(t.due_date.split(' ').slice(1).join(' '));
+              if (t.due_date.includes("T")) {
+                 setDate(t.due_date.split("T")[0]);
+                 const parsedTime = t.due_date.split("T")[1].substring(0, 5);
+                 setTime(parsedTime === "00:00" ? "" : parsedTime);
+              } else if (t.due_date.includes(" ")) {
+                 setDate(t.due_date.split(' ')[0]);
+                 setTime(t.due_date.split(' ').slice(1).join(' '));
+              } else {
+                 setDate(t.due_date);
+              }
+            }
+            
+            if (autoConfirm) {
+              await createTask({
+                title: t.title,
+                category: t.category?.toLowerCase() || "work",
+                priority: t.priority === "high" ? "high" : t.priority === "medium" ? "medium" : "low",
+                status: "active",
+                due_date: t.due_date || null
+              });
+              await refreshTasks();
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              router.replace("/(tabs)/intents");
+              return;
             }
           }
         }
@@ -257,14 +281,23 @@ export default function IntentCreationScreen() {
     if (!subject.trim()) return;
     setIsSaving(true);
     try {
+      let finalDueDate = null;
+      if (date) {
+        let cleanTime = time.trim() || '09:00';
+        // Simple standardization for format
+        if (cleanTime.length === 4 && cleanTime.includes(':')) cleanTime = '0' + cleanTime;
+        finalDueDate = `${date}T${cleanTime}:00`;
+      }
+
       const taskData = {
         title: subject,
         category: actionType,
         priority: priority.toLowerCase(),
         status: taskStatus === "Active" ? "active" : "pending",
-        due_date: date ? `${date} ${time}`.trim() : null,
+        due_date: finalDueDate,
       };
       await createTask(taskData);
+      await refreshTasks();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace("/(tabs)/intents");
     } catch (err) {
@@ -510,7 +543,7 @@ export default function IntentCreationScreen() {
       </ScrollView>
 
       {/* Text Screen Bottom Bar */}
-      <View style={S.bottomBar}>
+      <View style={[S.bottomBar, { gap: 12 }]}>
         <TouchableOpacity style={S.dictateBtn} onPress={() => setScreen("voice")}>
            <MaterialCommunityIcons name="microphone" size={20} color="#a78bfa" />
            <Text style={S.dictateBtnText}>Dictate</Text>
@@ -904,7 +937,7 @@ const S = StyleSheet.create({
     marginRight: 6,
   },
   dictateBtn: {
-    flex: 0.4,
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -921,7 +954,7 @@ const S = StyleSheet.create({
     fontSize: 14,
   },
   saveActionBtn: {
-    flex: 0.5,
+    flex: 1.5,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 14,

@@ -45,7 +45,7 @@ async function create(taskData) {
 async function update(taskId, userId, updates) {
   const { data, error } = await supabase
     .from('tasks')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update(updates)
     .eq('id', taskId)
     .eq('user_id', userId)
     .select()

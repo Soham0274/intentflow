@@ -111,8 +111,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     marginBottom: Spacing.xs,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: Colors.elevated,
     ...Shadow.card,
   },
   cardDone: {
@@ -173,8 +171,6 @@ const styles = StyleSheet.create({
   },
   chip: {
     backgroundColor: Colors.background,
-    borderWidth: 1,
-    borderColor: Colors.border,
     borderRadius: Radius.pill,
     paddingHorizontal: 8,
     paddingVertical: 3,

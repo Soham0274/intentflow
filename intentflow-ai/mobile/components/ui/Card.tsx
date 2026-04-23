@@ -52,7 +52,6 @@ export function Card({ children, style, onPress, selected = false }: CardProps) 
 const styles = StyleSheet.create({
   card: {
     borderRadius: 24,
-    borderWidth: 1,
     padding: 20,
     marginBottom: 16,
   },

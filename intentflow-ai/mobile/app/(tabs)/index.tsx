@@ -91,6 +91,7 @@ export default function HomeScreen() {
       const response = await processNLP(textInput);
       if (response.success) {
         setTextInput("");
+        await refreshTasks();
       }
     } catch (error: any) {
       console.error("[Voice] Text process error:", error);
@@ -98,7 +99,7 @@ export default function HomeScreen() {
   };
 
   // Calculate task stats
-  const activeTaskCount = tasks.filter((t) => t.status === "confirmed").length;
+  const activeTaskCount = tasks.filter((t) => t.status === "active").length;
   const pendingTaskCount = tasks.filter((t) => t.status === "pending").length;
 
   if (isLoading) {
@@ -237,7 +238,7 @@ export default function HomeScreen() {
                         <Text style={[styles.statusPillText, { 
                           color: t.status === 'pending' ? colors.intentWarning : colors.intentSuccess 
                         }]}>
-                          {t.status || 'Confirmed'}
+                          {t.status === 'active' ? 'Active' : t.status === 'completed' ? 'Completed' : 'Pending'}
                         </Text>
                       </View>
                     )}
@@ -304,7 +305,6 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 11,
-    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -343,8 +343,7 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: 18,
     padding: 14,
     alignItems: "center",
   },
@@ -379,8 +378,7 @@ const styles = StyleSheet.create({
   textInputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 18,
     paddingHorizontal: 12,
     minHeight: 50,
   },
@@ -426,8 +424,7 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.72)",
   },
   recentCard: {
-    borderRadius: 16,
-    borderWidth: 1,
+    borderRadius: 18,
     overflow: "hidden",
   },
   recentHeader: {
@@ -478,8 +475,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: 18,
   },
   micHintIcon: {
     width: 36,
@@ -499,8 +495,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: 18,
     marginTop: 10,
   },
   testBtnIcon: {
@@ -536,8 +531,7 @@ const styles = StyleSheet.create({
     lineHeight: 38,
   },
   parseBox: {
-    borderRadius: 16,
-    borderWidth: 1,
+    borderRadius: 18,
     overflow: "hidden",
   },
   parseRow: {
@@ -598,8 +592,7 @@ const styles = StyleSheet.create({
   },
   editBtn: {
     height: 50,
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -614,8 +607,7 @@ const styles = StyleSheet.create({
     gap: 7,
     paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 14,
   },
   hitlBtnText: {
     fontSize: 13,

@@ -3,7 +3,7 @@ import { supabase } from './supabase';
 
 // For Expo development, use your computer's local IP instead of localhost
 // Find your IP: Windows (ipconfig), Mac/Linux (ifconfig or ipconfig getifaddr en0)
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.6.130:3001/api';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://intentflow-9k6n.onrender.com/api';
 
 console.log('[API Config] EXPO_PUBLIC_API_URL:', process.env.EXPO_PUBLIC_API_URL);
 console.log('[API Config] Final API_URL:', API_URL);

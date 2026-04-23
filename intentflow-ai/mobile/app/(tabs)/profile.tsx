@@ -222,7 +222,6 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 11,
-    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -286,7 +285,6 @@ const styles = StyleSheet.create({
   },
   prefsCard: {
     borderRadius: 18,
-    borderWidth: 1,
     overflow: "hidden",
   },
   prefRow: {
@@ -337,7 +335,6 @@ const styles = StyleSheet.create({
   },
   ecoCard: {
     borderRadius: 18,
-    borderWidth: 1,
     overflow: "hidden",
   },
   ecoRow: {
@@ -395,8 +392,7 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_500Medium",
   },
   recentCard: {
-    borderRadius: 16,
-    borderWidth: 1,
+    borderRadius: 18,
     overflow: "hidden",
   },
   recentRow: {
@@ -410,8 +406,7 @@ const styles = StyleSheet.create({
   },
   logoutBtn: {
     height: 50,
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: 18,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

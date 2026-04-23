@@ -10,7 +10,8 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Fonts, Radius, Spacing, Shadow } from '@/constants/theme';
-import { useStore } from '@/store/useStore';
+import { useApp } from '@/context/AppContext';
+import * as api from '@/services/api';
 import GradientButton from '@/components/ui/GradientButton';
 import OutlineButton from '@/components/ui/OutlineButton';
 import PriorityBadge from '@/components/ui/PriorityBadge';
@@ -26,9 +27,11 @@ export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { tasks, toggleTask, updateTask, showToast } = useStore();
+  const { tasks, updateTask } = useApp();
 
   const task = tasks.find((t) => t.id === id);
+  // Default to empty arrays for missing arrays
+  const subtasks = (task as any)?.subtasks || [];
   const [newSubtask, setNewSubtask] = useState('');
 
   if (!task) {
@@ -45,32 +48,44 @@ export default function TaskDetailScreen() {
   }
 
   const isDone = task.status === 'completed';
-  const priorityColor = Colors.priority[task.priority];
+  // Note: the backend may or may not support priority/subtasks exactly this way,
+  // but we should store them in 'description' or similar if they don't, 
+  // or pass them in updateTask if backend supports dynamic metadata.
+  const priorityColor = task.priority ? Colors.priority[task.priority as 'low'|'medium'|'high'] : Colors.priority.medium;
 
-  const handleAddSubtask = () => {
+  const handleAddSubtask = async () => {
     if (!newSubtask.trim()) return;
     const updated = [
-      ...task.subtasks,
+      ...subtasks,
       { id: Date.now().toString(), title: newSubtask.trim(), completed: false },
     ];
-    updateTask(task.id, { subtasks: updated });
+    updateTask(task.id, { subtasks: updated } as any);
     setNewSubtask('');
+    try {
+      await api.updateTask(task.id, { subtasks: updated });
+    } catch(e) {}
   };
 
-  const handleToggleSubtask = (subId: string) => {
-    const updated = task.subtasks.map((s) =>
+  const handleToggleSubtask = async (subId: string) => {
+    const updated = subtasks.map((s: any) =>
       s.id === subId ? { ...s, completed: !s.completed } : s
     );
-    updateTask(task.id, { subtasks: updated });
+    updateTask(task.id, { subtasks: updated } as any);
+    try {
+      await api.updateTask(task.id, { subtasks: updated });
+    } catch(e) {}
   };
 
-  const handleComplete = () => {
-    toggleTask(task.id);
-    showToast('success', isDone ? 'Task reopened' : 'Task completed! 🎉');
+  const handleComplete = async () => {
+    const newStatus = isDone ? 'active' : 'completed';
+    updateTask(task.id, { status: newStatus as any });
     router.back();
+    try {
+      await api.updateTask(task.id, { status: newStatus });
+    } catch(e) {}
   };
 
-  const completedSubs = task.subtasks.filter((s) => s.completed).length;
+  const completedSubs = subtasks.filter((s: any) => s.completed).length;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -94,9 +109,9 @@ export default function TaskDetailScreen() {
           <View style={styles.heroContent}>
             <Text style={styles.taskTitle}>{task.title}</Text>
             <View style={styles.badgeRow}>
-              <PriorityBadge priority={task.priority} />
-              <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[task.status] + '22', borderColor: STATUS_COLORS[task.status] + '55' }]}>
-                <Text style={[styles.statusText, { color: STATUS_COLORS[task.status] }]}>
+              {task.priority && <PriorityBadge priority={task.priority as any} />}
+              <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[task.status as keyof typeof STATUS_COLORS] + '22', borderColor: STATUS_COLORS[task.status as keyof typeof STATUS_COLORS] + '55' }]}>
+                <Text style={[styles.statusText, { color: STATUS_COLORS[task.status as keyof typeof STATUS_COLORS] }]}>
                   {isDone ? '✓ Completed' : task.status.charAt(0).toUpperCase() + task.status.slice(1)}
                 </Text>
               </View>
@@ -120,26 +135,30 @@ export default function TaskDetailScreen() {
               <Text style={styles.infoValue}>{task.dueTime}</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.infoCard}>
-            <Text style={styles.infoIcon}>⚡</Text>
-            <Text style={styles.infoLabel}>Priority</Text>
-            <Text style={[styles.infoValue, { color: priorityColor }]}>
-              {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.infoCard}>
-            <Text style={styles.infoIcon}>🏷</Text>
-            <Text style={styles.infoLabel}>Category</Text>
-            <Text style={styles.infoValue}>{task.category}</Text>
-          </TouchableOpacity>
+          {task.priority && (
+            <TouchableOpacity style={styles.infoCard}>
+              <Text style={styles.infoIcon}>⚡</Text>
+              <Text style={styles.infoLabel}>Priority</Text>
+              <Text style={[styles.infoValue, { color: priorityColor }]}>
+                {String(task.priority).charAt(0).toUpperCase() + String(task.priority).slice(1)}
+              </Text>
+            </TouchableOpacity>
+          )}
+          {task.category && (
+            <TouchableOpacity style={styles.infoCard}>
+              <Text style={styles.infoIcon}>🏷</Text>
+              <Text style={styles.infoLabel}>Category</Text>
+              <Text style={styles.infoValue}>{task.category}</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* People */}
-            {task.people && task.people.length > 0 && (
+            {(task as any)?.people && (task as any).people.length > 0 && (
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>People</Text>
                 <View style={styles.peopleRow}>
-                  {task.people.map((person, idx) => (
+                  {(task as any).people.map((person: string, idx: number) => (
                     <AvatarWithColor key={idx} initials={person[0]} size={36} gradient />
                   ))}
                 </View>
@@ -151,7 +170,7 @@ export default function TaskDetailScreen() {
           <Text style={styles.sectionLabel}>Notes</Text>
           <View style={styles.notesBox}>
             <Text style={styles.notesText}>
-              {task.description || 'No notes yet. Tap to add…'}
+              {(task as any).description || 'No notes yet. Tap to add…'}
             </Text>
           </View>
         </View>
@@ -160,16 +179,16 @@ export default function TaskDetailScreen() {
         <View style={styles.section}>
           <View style={styles.subtaskHeader}>
             <Text style={styles.sectionLabel}>Subtasks</Text>
-            {task.subtasks.length > 0 && (
+            {subtasks.length > 0 && (
               <View style={styles.subtaskBadge}>
                 <Text style={styles.subtaskBadgeText}>
-                  {completedSubs}/{task.subtasks.length}
+                  {completedSubs}/{subtasks.length}
                 </Text>
               </View>
             )}
           </View>
 
-          {task.subtasks.map((sub) => (
+          {subtasks.map((sub: any) => (
             <TouchableOpacity
               key={sub.id}
               style={styles.subtaskRow}

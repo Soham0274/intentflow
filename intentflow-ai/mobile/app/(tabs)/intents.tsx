@@ -17,13 +17,15 @@ import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useColors } from "@/hooks/useColors";
 import { GradientBackground } from "@/components/GradientBackground";
 import { fetchRecentIntents, updateTask } from "@/services/api";
+import { useRouter } from "expo-router";
 
-type TaskFilter = "all" | "pending_review" | "confirmed" | "completed";
+type TaskFilter = "all" | "pending" | "active" | "completed";
 
 export default function IntentsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
+  const router = useRouter();
   const [tasks, setTasks] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -57,8 +59,8 @@ export default function IntentsScreen() {
   );
 
   const handleToggleComplete = async (task: any) => {
-    const newStatus = task.status === "completed" ? "pending" : "completed";
-    const taskId = task.id || task._id; // Support both id formats
+    const newStatus = task.status === "completed" ? "active" : "completed";
+    const taskId = task.id || task._id;
     
     if (!taskId) {
       console.error('[Intents] Task has no ID:', task);
@@ -72,8 +74,24 @@ export default function IntentsScreen() {
     } catch (err: any) {
       console.error('[Intents] Failed to update task:', err);
       console.error('[Intents] Error response:', err.response?.data);
-      // Show error to user (optional - could add toast here)
     }
+  };
+
+  const handleEditTask = (task: any) => {
+    const taskId = task.id || task._id;
+    if (taskId) {
+      router.push(`/task/${taskId}`);
+    }
+  };
+
+  const formatTaskTime = (task: any) => {
+    if (task.due_time) return task.due_time;
+    if (task.due_date) {
+      const date = new Date(task.due_date);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+    if (task.trigger) return task.trigger;
+    return "No date set";
   };
 
   const filteredTasks = tasks.filter((t) => {
@@ -151,8 +169,8 @@ export default function IntentsScreen() {
           contentContainerStyle={styles.filtersContent}
         >
           <FilterChip label="All" value="all" />
-          <FilterChip label="Processing" value="pending_review" />
-          <FilterChip label="Confirmed" value="confirmed" />
+          <FilterChip label="Pending" value="pending" />
+          <FilterChip label="Active" value="active" />
           <FilterChip label="Completed" value="completed" />
         </ScrollView>
       </View>
@@ -195,37 +213,41 @@ export default function IntentsScreen() {
                       color={task.status === 'completed' ? colors.intentSuccess : colors.mutedForeground} 
                     />
                   </TouchableOpacity>
-                  <View style={styles.intentInfo}>
+                  <TouchableOpacity style={styles.intentInfo} onPress={() => handleEditTask(task)}>
                     <Text style={[styles.intentAction, { color: colors.foreground, textDecorationLine: task.status === 'completed' ? 'line-through' : 'none' }]} numberOfLines={1}>
                       {task.title || task.action}
                     </Text>
                     <Text style={[styles.intentTrigger, { color: colors.mutedForeground }]} numberOfLines={1}>
-                      {task.category || task.entity || "General"} · {task.due_date || task.trigger || "Today"}
+                      {task.category || task.entity || "General"} · {formatTaskTime(task)}
                     </Text>
-                  </View>
-                  <View
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleEditTask(task)}
                     style={[
-                      styles.intentStatus, 
-                      { 
-                        backgroundColor: task.status === 'completed' ? colors.intentSuccess + "18" : 
-                                         task.status === 'pending_review' ? colors.destructive + "18" : 
-                                         colors.primary + "10" 
+                      styles.intentStatus,
+                      {
+                        backgroundColor: task.status === 'completed' ? colors.intentSuccess + "18" :
+                                         task.status === 'pending' ? colors.destructive + "18" :
+                                         colors.primary + "10"
                       }
                     ]}
                   >
-                    <Text 
+                    <Text
                       style={[
-                        styles.intentStatusText, 
-                        { 
-                          color: task.status === 'completed' ? colors.intentSuccess : 
-                                 task.status === 'pending_review' ? colors.destructive : 
-                                 colors.primary 
+                        styles.intentStatusText,
+                        {
+                          color: task.status === 'completed' ? colors.intentSuccess :
+                                 task.status === 'pending' ? colors.destructive :
+                                 colors.primary
                         }
                       ]}
                     >
-                      {task.status?.replace('_', ' ') || "confirmed"}
+                      {task.status || "active"}
                     </Text>
-                  </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleEditTask(task)} style={styles.editBtn}>
+                    <Feather name="edit-2" size={14} color={colors.mutedForeground} />
+                  </TouchableOpacity>
                 </Animated.View>
               ))}
             </View>
@@ -266,7 +288,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -274,7 +295,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderRadius: 12,
-    borderWidth: 1,
     paddingHorizontal: 12,
     height: 44,
     gap: 10,
@@ -296,8 +316,7 @@ const styles = StyleSheet.create({
   chip: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
+    borderRadius: 18,
   },
   chipText: {
     fontSize: 12,
@@ -310,7 +329,6 @@ const styles = StyleSheet.create({
   section: {},
   intentsList: {
     borderRadius: 18,
-    borderWidth: 1,
     overflow: "hidden",
   },
   intentRow: {
@@ -349,6 +367,10 @@ const styles = StyleSheet.create({
     fontFamily: "Syne_700Bold",
     textTransform: "uppercase",
     letterSpacing: 0.4,
+  },
+  editBtn: {
+    padding: 8,
+    marginLeft: 4,
   },
   center: {
     paddingVertical: 60,

@@ -50,8 +50,6 @@ const styles = StyleSheet.create({
     height: 72,
     borderRadius: 36,
     backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.elevated,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,

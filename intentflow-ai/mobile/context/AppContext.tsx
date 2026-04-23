@@ -14,7 +14,7 @@ export interface IntentTask {
   entity: string;
   action: string;
   trigger: string;
-  status: "pending" | "confirmed" | "cancelled";
+  status: "pending" | "active" | "completed";
   createdAt: string;
 }
 
@@ -80,9 +80,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         entity: t.category || "General",
         action: t.title,
         trigger: t.due_date ? new Date(t.due_date).toLocaleDateString() : "No due date",
-        status: t.status === "completed" ? "confirmed" : 
-                t.status === "in_progress" ? "confirmed" : 
-                t.status === "pending" ? "pending" : 
+        status: t.status === "completed" ? "completed" : 
+                t.status === "active" ? "active" : 
                 "pending",
         createdAt: t.created_at || t.createdAt,
       }));

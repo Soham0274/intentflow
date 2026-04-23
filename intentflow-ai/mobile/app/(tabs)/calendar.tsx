@@ -36,40 +36,35 @@ const STATUS_COLORS = {
 
 // Helper to format time from due_date or time string
 const formatTaskTime = (task: Task | CalendarEvent) => {
-  // Check if it's a calendar event
-  if ('start' in task && task.start) {
-    const date = new Date(task.start);
-    if (!isNaN(date.getTime())) {
-      return {
-        time: date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }),
-        period: date.getHours() >= 12 ? "PM" : "AM",
-      };
+  let timeStr = "";
+  if ('start' in task && task.start) timeStr = task.start;
+  else if (task.due_date) timeStr = task.due_date;
+
+  if (timeStr) {
+    let timePart = "";
+    if (timeStr.includes("T")) timePart = timeStr.split("T")[1];
+    else if (timeStr.includes(" ")) timePart = timeStr.split(" ")[1];
+    
+    if (timePart) {
+      const parts = timePart.split(":");
+      let hour = parseInt(parts[0], 10);
+      let minStr = parts[1];
+      let period = hour >= 12 ? "PM" : "AM";
+      hour = hour % 12 || 12;
+      return { time: `${hour}:${minStr}`, period };
     }
   }
   
-  // Check for task due_date
-  if (task.due_date) {
-    const date = new Date(task.due_date);
-    if (!isNaN(date.getTime())) {
-      return {
-        time: date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }),
-        period: date.getHours() >= 12 ? "PM" : "AM",
-      };
-    }
-  }
-  
-  // Check for explicit dueTime field
   if ('dueTime' in task && task.dueTime) {
     const [hours] = task.dueTime.split(":");
-    const hour = parseInt(hours, 10);
-    return {
-      time: task.dueTime,
-      period: hour >= 12 ? "PM" : "AM",
-    };
+    let hour = parseInt(hours, 10);
+    let period = hour >= 12 ? "PM" : "AM";
+    hour = hour % 12 || 12;
+    const min = task.dueTime.split(":")[1] || "00";
+    return { time: `${hour}:${min}`, period };
   }
   
-  // Default fallback
-  return { time: "09:00", period: "AM" };
+  return { time: "9:00", period: "AM" };
 };
 
 type Task = {
@@ -506,7 +501,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1,
   },
   avatarBtn: {
     width: 40,
@@ -514,13 +508,11 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1,
   },
   calendarCard: {
     borderRadius: 24,
     padding: 20,
     marginBottom: 24,
-    borderWidth: 1,
   },
   monthHeader: {
     flexDirection: "row",
@@ -632,11 +624,10 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_500Medium",
   },
   emptyCard: {
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
     gap: 12,
   },
   emptyText: {
@@ -646,10 +637,9 @@ const styles = StyleSheet.create({
   },
   taskCard: {
     flexDirection: "row",
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 16,
     marginBottom: 12,
-    borderWidth: 1,
   },
   taskTimeColumn: {
     width: 50,

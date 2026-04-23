@@ -67,7 +67,10 @@ const taskSchema = z.object({
   priority:    z.enum(['low', 'medium', 'high']).default('medium'),
   category:    z.enum(['work', 'personal', 'urgent', 'routine', 'health']).default('work'),
   people:      z.array(z.string()).default([]),
-  confidence:  z.number().min(0).max(1).default(0.5)
+  confidence:  z.number().min(0).max(1).default(0.5),
+  // Geolocation fields
+  location_name: z.string().nullable().default(null),
+  poi_type: z.enum(['grocery_store', 'pharmacy', 'bank', 'restaurant', 'gas_station', 'post_office', 'library', 'gym', 'office', 'home', 'custom', 'other']).nullable().default(null)
 });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -147,7 +150,24 @@ async function transcribeWithGroq(audioBase64, mimeType) {
 async function persistExtractedTasks(formattedTasks, userId, hitlId) {
   if (!formattedTasks.length) return [];
 
-  const tasksToCreate = formattedTasks.map(t => ({
+  // Geocode locations in parallel
+  const geocodedTasks = await Promise.all(
+    formattedTasks.map(async (t) => {
+      let geocodeResult = null;
+      
+      // Only geocode if location_name is provided and specific (not generic)
+      if (t.location_name && t.location_name.length > 2) {
+        geocodeResult = await geocodeLocation(t.location_name);
+      }
+      
+      return {
+        ...t,
+        geocodeResult
+      };
+    })
+  );
+
+  const tasksToCreate = geocodedTasks.map(t => ({
     title:          t.title,
     description:    t.description || null,
     due_date:       t.due_date && t.due_time ? `${t.due_date}T${t.due_time}:00Z` : (t.due_date || null),
@@ -155,7 +175,13 @@ async function persistExtractedTasks(formattedTasks, userId, hitlId) {
     category:       t.category   || 'work',
     status:         'pending_review',
     user_id:        userId,
-    hitl_id:        hitlId
+    hitl_id:        hitlId,
+    // Geolocation fields
+    location_name:  t.location_name || null,
+    location_lat:   t.geocodeResult?.lat || null,
+    location_lng:   t.geocodeResult?.lng || null,
+    poi_type:       t.poi_type || 'custom',
+    geofence_enabled: !!(t.geocodeResult?.lat && t.geocodeResult?.lng && t.location_name)
   }));
 
   try {
@@ -177,7 +203,7 @@ async function persistExtractedTasks(formattedTasks, userId, hitlId) {
 }
 
 // ─── Prompts ──────────────────────────────────────────────────────────────────
-const TASK_EXTRACTION_PROMPT = `You are a task extraction AI. Extract structured tasks from natural language.
+const TASK_EXTRACTION_PROMPT = `You are a task extraction AI. Extract structured tasks from natural language, including any location context.
 
 Return ONLY a valid JSON array — no markdown, no explanation:
 [
@@ -189,12 +215,15 @@ Return ONLY a valid JSON array — no markdown, no explanation:
     "priority":    "high" | "medium" | "low",
     "category":    "work" | "personal" | "urgent" | "routine" | "health",
     "people":      ["names mentioned"] or [],
-    "confidence":  number between 0.0 and 1.0
+    "confidence":  number between 0.0 and 1.0,
+    "location_name": "specific store, business name, or address mentioned (e.g., 'Whole Foods on Main St', 'CVS Pharmacy', 'Walmart on 5th Ave') or null if no location",
+    "poi_type":    "grocery_store" | "pharmacy" | "bank" | "restaurant" | "gas_station" | "post_office" | "library" | "gym" | "office" | "home" | "custom" | "other" | null
   }
 ]
 
 Date rules: tomorrow=next day, next Friday=coming Friday, morning=09:00, afternoon=14:00, evening=18:00, tonight=20:00, EOD=today 17:00, ASAP=today+high
-Priority: urgent/ASAP=high | sometime/when you can=low | default=medium`;
+Priority: urgent/ASAP=high | sometime/when you can=low | default=medium
+Location rules: Extract ANY specific business names, store names, street addresses, or landmarks mentioned. Examples: "pick up milk from Whole Foods" → location_name: "Whole Foods", "get medicine at CVS" → location_name: "CVS", "meeting at Starbucks" → location_name: "Starbucks", "buy groceries" → location_name: null (no specific location mentioned)`;
 
 // ─── Service Functions ────────────────────────────────────────────────────────
 
@@ -302,4 +331,44 @@ async function extractTasksFromAudio(audioBase64, mimeType, userId) {
   return { hitlId: queueEntry.id, transcript, tasks, highConfidence, needsReview, persistedCount: persistedTasks.length };
 }
 
-module.exports = { extractTasks, parseIntent, extractTasksFromAudio };
+// ─── Geocoding Service ───────────────────────────────────────────────────────
+async function geocodeLocation(locationName) {
+  if (!locationName) return null;
+  
+  try {
+    // Use LocationIQ Geocoding API (requires LOCATIONIQ_ACCESS_TOKEN in env)
+    const locationIqToken = config.LOCATIONIQ?.ACCESS_TOKEN || process.env.LOCATIONIQ_ACCESS_TOKEN;
+    
+    if (!locationIqToken) {
+      console.warn('[Geocoding] No LocationIQ token configured, skipping geocoding');
+      return null;
+    }
+    
+    const encodedQuery = encodeURIComponent(locationName);
+    const url = `https://us1.locationiq.com/v1/search.php?key=${locationIqToken}&q=${encodedQuery}&format=json&limit=1`;
+    
+    const response = await axios.get(url, { timeout: 5000 });
+    
+    if (response.data?.length > 0) {
+      const result = response.data[0];
+      const lat = parseFloat(result.lat);
+      const lng = parseFloat(result.lon);
+      
+      console.warn('[Geocoding] ✅ Resolved:', locationName, '→', lat, lng);
+      return {
+        lat,
+        lng,
+        placeName: result.display_name,
+        relevance: parseFloat(result.importance) || 0.5
+      };
+    }
+    
+    console.warn('[Geocoding] No results for:', locationName);
+    return null;
+  } catch (err) {
+    console.error('[Geocoding] Error:', err.message);
+    return null;
+  }
+}
+
+module.exports = { extractTasks, parseIntent, extractTasksFromAudio, geocodeLocation };

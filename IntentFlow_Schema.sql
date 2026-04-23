@@ -43,6 +43,13 @@ CREATE TABLE public.tasks (
   project_id UUID REFERENCES public.projects(id),
   blocked_by_task_id UUID REFERENCES public.tasks(id),
   calendar_event_id TEXT,
+  -- Geolocation fields for geofencing
+  location_name TEXT,
+  location_lat FLOAT,
+  location_lng FLOAT,
+  geofence_radius_m INTEGER DEFAULT 200,
+  poi_type TEXT,
+  geofence_enabled BOOLEAN DEFAULT false,
   metadata JSONB,
   last_notified_at TIMESTAMPTZ,
   last_reminded_at TIMESTAMPTZ,

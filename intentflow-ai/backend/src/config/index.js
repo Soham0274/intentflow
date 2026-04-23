@@ -19,6 +19,8 @@ const envSchema = z.object({
   GROQ_API_KEY: z.string().min(1, 'GROQ_API_KEY is required'),
   GROQ_AUDIO_MODEL: z.string().default('whisper-large-v3-turbo'),
   
+  LOCATIONIQ_ACCESS_TOKEN: z.string().optional(),
+  
   N8N_BASE_URL: z.string().url().optional().or(z.literal('')),
   N8N_API_KEY: z.string().optional(),
   N8N_WEBHOOK_SECRET: z.string().optional(),
@@ -54,6 +56,7 @@ try {
     GEMINI_MODEL: process.env.GEMINI_MODEL,
     GROQ_API_KEY: process.env.GROQ_API_KEY,
     GROQ_AUDIO_MODEL: process.env.GROQ_AUDIO_MODEL,
+    LOCATIONIQ_ACCESS_TOKEN: process.env.LOCATIONIQ_ACCESS_TOKEN,
     N8N_BASE_URL: process.env.N8N_BASE_URL,
     N8N_API_KEY: process.env.N8N_API_KEY,
     N8N_WEBHOOK_SECRET: process.env.N8N_WEBHOOK_SECRET,
@@ -88,6 +91,10 @@ try {
     GROQ: {
       API_KEY: env.GROQ_API_KEY,
       AUDIO_MODEL: env.GROQ_AUDIO_MODEL,
+    },
+    
+    LOCATIONIQ: {
+      ACCESS_TOKEN: env.LOCATIONIQ_ACCESS_TOKEN || ''
     },
     
     N8N: {

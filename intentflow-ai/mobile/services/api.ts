@@ -114,7 +114,7 @@ export const disconnectApp = async (appName: string) => {
 
 // RECENT INTENTS APIs
 export const fetchRecentIntents = async (limit: number = 10) => {
-  const response = await api.get('/users/recent-intents', { params: { limit } });
+  const response = await api.get('/tasks', { params: { limit, sort: '-created_at' } });
   return response.data;
 };
 

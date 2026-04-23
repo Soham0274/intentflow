@@ -50,22 +50,36 @@ router.get('/google', asyncHandler(async (req, res) => {
 }));
 
 router.get('/callback', asyncHandler(async (req, res) => {
-  const { code } = req.query;
+  const { code, redirect_to } = req.query;
   if (!code) return res.status(400).json({ error: 'No code provided' });
 
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-  if (error) return res.status(500).json({ error: error.message });
+  // Use the ANON client locally for this request so we don't pollute the global SERVICE client
+  const { createClient } = require('@supabase/supabase-js');
+  const tempClient = createClient(config.SUPABASE.URL, config.SUPABASE.ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
 
-  // Sync user table using upsert to handle race conditions safely
+  const { data, error } = await tempClient.auth.exchangeCodeForSession(code);
+  if (error) {
+    console.error('[Auth Callback] Error:', error.message);
+    return res.redirect(`${config.APP.FRONTEND_URL}/login?error=auth_failed`);
+  }
+
+  // Ensure user is synced
   const user = data.user;
-  await supabase.from('users').upsert({
-    oauth_id: user.id,
-    email: user.email,
-    name: user.user_metadata?.full_name || '',
-    avatar_url: user.user_metadata?.avatar_url || ''
-  }, { onConflict: 'oauth_id' });
+  if (user) {
+    await supabase.from('users').upsert({
+      id: user.id, // Enforce correct ID
+      oauth_id: user.id, // For backward compatibility if needed
+      email: user.email,
+      name: user.user_metadata?.full_name || '',
+      avatar_url: user.user_metadata?.avatar_url || ''
+    }, { onConflict: 'id' }).catch(err => console.error('[Auth Callback] Sync Error:', err));
+  }
 
-  res.redirect(`${config.APP.FRONTEND_URL}/dashboard?token=${data.session.access_token}`);
+  // Use the client-provided redirect_to or default to web frontend
+  const baseUrl = redirect_to || `${config.APP.FRONTEND_URL}/dashboard`;
+  res.redirect(`${baseUrl}?token=${data.session.access_token}`);
 }));
 
 // Google Calendar Sync Flow (from previous session)

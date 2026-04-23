@@ -1,386 +1,940 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
-  View, Text, StyleSheet, TouchableOpacity, Animated,
-  TextInput, KeyboardAvoidingView, Platform, ScrollView,
-  Alert, ActivityIndicator,
-} from 'react-native';
-import { Audio } from 'expo-av';
-import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../theme/ThemeContext';
-import { StatusPill } from '../components/StatusPill';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { Fonts, Radius, Shadow } from '@/constants/theme';
-import { processVoice } from '../services/api';
-import { voiceRecorder } from '../services/voiceRecorder';
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  SafeAreaView,
+  TextInput,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+  Dimensions,
+} from "react-native";
+import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withRepeat,
+  withSequence,
+  withTiming,
+  FadeIn,
+  FadeInDown,
+} from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
 
-const WaveBar = ({ height }: { height: Animated.Value }) => (
-  <Animated.View style={[styles.waveBar, { height, backgroundColor: '#6C63FF' }]} />
-);
+import { useTheme } from "../theme/ThemeContext";
+import { processVoice, processNLP, createTask } from "@/services/api";
+import { voiceRecorder } from "@/services/voiceRecorder";
+import { Fonts, Radius } from "@/constants/theme";
 
-export default function VoiceScreen() {
-  const { colors, typography } = useTheme();
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
+// ─── Types ────────────────────────────────────────────────────────
+type Screen = "voice" | "text";
 
-  const [isRecording, setIsRecording] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [transcript, setTranscript] = useState('');
-  const [isTextMode, setIsTextMode] = useState(false);
-  const [textInput, setTextInput] = useState('');
-  const [audioUri, setAudioUri] = useState<string | null>(null);
-  const [recordingDuration, setRecordingDuration] = useState(0);
-  const [parsedIntent, setParsedIntent] = useState<any>(null);
-  const [transcriptionConfidence, setTranscriptionConfidence] = useState(0);
-  const [intentConfidence, setIntentConfidence] = useState(0);
+interface Entity {
+  label: string;
+  value: string;
+  icon: string;
+}
 
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const bars = useRef([new Animated.Value(20), new Animated.Value(40), new Animated.Value(60), new Animated.Value(30), new Animated.Value(50)]).current;
-  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+interface ActionCategory {
+  id: string;
+  label: string;
+  icon: string;
+}
+
+// ─── Constants ────────────────────────────────────────────────────
+const ACTION_CATEGORIES: ActionCategory[] = [
+  { id: "shopping",  label: "Shopping", icon: "🛒" },
+  { id: "work",      label: "Work",     icon: "💼" },
+  { id: "home",      label: "Home",     icon: "🏠" },
+  { id: "health",    label: "Health",   icon: "❤️" },
+  { id: "social",    label: "Social",   icon: "👥" },
+  { id: "finance",   label: "Finance",  icon: "💳" },
+];
+
+const PRIORITY_OPTIONS = ["Low", "Medium", "High"] as const;
+type Priority = (typeof PRIORITY_OPTIONS)[number];
+
+const PRIORITY_COLORS: Record<Priority, string> = {
+  Low:    "#22c55e",
+  Medium: "#7c6fe0",
+  High:   "#ef4444",
+};
+
+const STATUS_OPTIONS = ["Pending", "Active"] as const;
+type TaskStatus = (typeof STATUS_OPTIONS)[number];
+
+const STATUS_COLORS: Record<TaskStatus, string> = {
+  Pending: "#eab308",
+  Active:  "#7c6fe0",
+};
+
+// ─── Sub-components ───────────────────────────────────────────────
+
+/** Animated frequency bars */
+function Waveform({ active }: { active: boolean }) {
+  const NUM = 24;
+  const bars = Array.from({ length: NUM }).map(() => useSharedValue(8));
 
   useEffect(() => {
-    if (isRecording) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.2, duration: 800, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-        ])
-      ).start();
-
-      bars.forEach(bar => {
-        Animated.loop(
-          Animated.sequence([
-            Animated.timing(bar, { toValue: Math.random() * 80 + 20, duration: 400 + Math.random() * 400, useNativeDriver: false }),
-            Animated.timing(bar, { toValue: 20, duration: 400 + Math.random() * 400, useNativeDriver: false }),
-          ])
-        ).start();
+    if (active) {
+      bars.forEach((bar, i) => {
+        bar.value = withRepeat(
+          withSequence(
+            withTiming(20 + Math.random() * 40, { duration: 400 + (i % 5) * 80 }),
+            withTiming(8, { duration: 400 + (i % 5) * 80 })
+          ),
+          -1,
+          true
+        );
       });
-
-      // Start recording timer
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingDuration(prev => prev + 1);
-      }, 1000);
     } else {
-      pulseAnim.setValue(1);
-      bars.forEach(bar => bar.setValue(20));
-      if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current);
-        recordingTimerRef.current = null;
-      }
+      bars.forEach((bar) => {
+        bar.value = withTiming(8);
+      });
     }
+  }, [active]);
 
-    return () => {
-      if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current);
-      }
-    };
-  }, [isRecording]);
+  return (
+    <View style={S.waveRow}>
+      {bars.map((bar, i) => {
+        const style = useAnimatedStyle(() => ({
+          height: bar.value,
+          backgroundColor: i % 3 === 0 ? "#7c6fe0" : i % 3 === 1 ? "#a78bfa" : "#4c3fa0",
+        }));
+        return <Animated.View key={i} style={[S.waveBar, style]} />;
+      })}
+    </View>
+  );
+}
+
+/** Confidence progress bar */
+function ConfidenceBar({ value }: { value: number }) {
+  const width = useSharedValue(0);
+  useEffect(() => {
+    width.value = withTiming(value, { duration: 1000 });
+  }, [value]);
+
+  const fillStyle = useAnimatedStyle(() => ({
+    width: `${width.value}%`,
+  }));
+
+  return (
+    <View style={S.confRow}>
+      <Text style={S.confLabel}>CONFIDENCE</Text>
+      <View style={S.confTrack}>
+        <Animated.View style={[S.confFill, fillStyle]} />
+      </View>
+      <Text style={S.confValue}>{value}%</Text>
+    </View>
+  );
+}
+
+/** Pill-shaped entity tag */
+function EntityTag({ entity }: { entity: Entity }) {
+  return (
+    <View style={S.entityTag}>
+      <Text style={S.entityIcon}>{entity.icon}</Text>
+      <Text style={S.entityLabel}>{entity.label}: </Text>
+      <Text style={S.entityValue}>{entity.value}</Text>
+    </View>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────
+
+export default function IntentCreationScreen() {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const [screen, setScreen] = useState<Screen>("voice");
+
+  // Voice State
+  const [isRecording, setIsRecording] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const [entities, setEntities] = useState<Entity[]>([]);
+  const [confidence, setConfidence] = useState(0);
+
+  // Text Form State
+  const [nlpInput, setNlpInput] = useState("");
+  const [subject, setSubject] = useState("");
+  const [actionType, setActionType] = useState("work");
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+  const [location, setLocation] = useState("");
+  const [priority, setPriority] = useState<Priority>("Medium");
+  const [taskStatus, setTaskStatus] = useState<TaskStatus>("Active");
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  // ─── Voice Logic ────────────────────────────────────────────────
 
   const startRecording = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setRecordingDuration(0);
-    setTranscript('');
-    setParsedIntent(null);
+    setTranscript("");
+    setEntities([]);
+    setConfidence(0);
     
     const success = await voiceRecorder.startRecording();
-    if (success) {
-      setIsRecording(true);
-    } else {
-      Alert.alert('Error', 'Failed to start recording. Please check microphone permissions.');
-    }
+    if (success) setIsRecording(true);
   };
 
   const stopRecording = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    // Guard: recordings shorter than 1 second produce empty transcripts
-    if (recordingDuration < 1) {
-      console.warn('[Voice] Recording too short (<1s), ignoring');
-      setIsRecording(false);
-      return;
-    }
-
     setIsRecording(false);
+    setIsProcessing(true);
     
     const uri = await voiceRecorder.stopRecording();
     if (uri) {
-      setAudioUri(uri);
-      setIsProcessing(true);
-      
       try {
-        // Send audio to backend for transcription
-        const response = await processVoice(uri);
-        
-        if (response.success) {
-          const data = response.data;
+        const res = await processVoice(uri);
+        if (res.success) {
+          const data = res.data;
+          setTranscript(data.transcript || data.text || "");
+          setConfidence(data.tasks?.[0]?.confidence_score || 85);
           
-          // Extract transcript from response
-          const extractedText = data.transcript || data.text || '';
-          setTranscript(extractedText);
-          
-          // Set confidence scores
-          setTranscriptionConfidence(95); // Default confidence
-          setIntentConfidence(90);
-          
-          // Store parsed intent
-          if (data.tasks && data.tasks.length > 0) {
-            setParsedIntent(data.tasks[0]);
+          if (data.tasks?.[0]) {
+            const t = data.tasks[0];
+            const newEntities: Entity[] = [
+              { label: "ACTION", value: t.title.toUpperCase(), icon: "📋" },
+            ];
+            if (t.category) newEntities.push({ label: "CATEGORY", value: t.category.toUpperCase(), icon: "🏷️" });
+            if (t.due_date) newEntities.push({ label: "TIME", value: t.due_date.toUpperCase(), icon: "🕒" });
+            setEntities(newEntities);
+            
+            // Auto-populate text form for easy editing
+            setSubject(t.title);
+            setNlpInput(data.transcript || "");
+            setActionType(t.category?.toLowerCase() || "work");
+            setPriority(t.priority === "high" ? "High" : t.priority === "medium" ? "Medium" : "Low");
+            if (t.due_date) {
+               setDate(t.due_date.split(' ')[0]);
+               setTime(t.due_date.split(' ').slice(1).join(' '));
+            }
           }
-          
-          // Navigate to confirmation after a delay
-          setTimeout(() => {
-            router.push('/confirm');
-          }, 2000);
-        } else {
-          Alert.alert('Error', response.message || 'Failed to process voice input');
         }
-      } catch (error: any) {
-        console.error('Voice processing error:', error);
-        
-        // For demo purposes - create a fallback response
-        const demoTranscript = "Schedule a team meeting for tomorrow at 2pm to discuss the project roadmap";
-        setTranscript(demoTranscript);
-        setTranscriptionConfidence(95);
-        setIntentConfidence(90);
-        setParsedIntent({
-          title: "Team meeting",
-          priority: "high",
-          category: "work",
-          due_date: new Date(Date.now() + 86400000).toISOString() // tomorrow
-        });
-        
-        // Show a brief message then navigate
-        Alert.alert(
-          'Demo Mode', 
-          'Using demo data for presentation. Voice processing will be available shortly.',
-          [{ text: 'OK', onPress: () => {
-            setTimeout(() => {
-              router.push('/confirm');
-            }, 1000);
-          }}]
-        );
+      } catch (err) {
+        console.error(err);
       } finally {
         setIsProcessing(false);
-        // Cleanup audio file
-        if (uri) {
-          voiceRecorder.cleanup(uri);
-        }
+        voiceRecorder.cleanup(uri);
       }
-    }
-  };
-
-  const toggleRecording = async () => {
-    if (!isRecording) {
-      await startRecording();
     } else {
-      await stopRecording();
+      setIsProcessing(false);
     }
   };
 
-  const handleTextSubmit = async () => {
-    if (!textInput.trim()) return;
-    
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  // ─── Text Logic ─────────────────────────────────────────────────
+
+  const handleExtract = async () => {
+    if (!nlpInput.trim()) return;
     setIsProcessing(true);
-    setTranscript(textInput);
-    
     try {
-      // Navigate to confirmation with text input
-      router.push({
-        pathname: '/confirm',
-        params: { text: textInput }
-      });
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to process text input');
+      const res = await processNLP(nlpInput);
+      if (res.success && res.data?.tasks?.[0]) {
+        const t = res.data.tasks[0];
+        setSubject(t.title);
+        setActionType(t.category?.toLowerCase() || "work");
+        setPriority(t.priority === "high" ? "High" : t.priority === "medium" ? "Medium" : "Low");
+        if (t.due_date) setDate(t.due_date);
+      }
+    } catch (err) {
+      console.error(err);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  const handleSave = async () => {
+    if (!subject.trim()) return;
+    setIsSaving(true);
+    try {
+      const taskData = {
+        title: subject,
+        category: actionType,
+        priority: priority.toLowerCase(),
+        status: taskStatus === "Active" ? "active" : "pending",
+        due_date: date ? `${date} ${time}`.trim() : null,
+      };
+      await createTask(taskData);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.replace("/(tabs)/intents");
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <View style={[styles.orb, styles.orb1]} />
-      <View style={[styles.orb, styles.orb2]} />
+  const addTag = () => {
+    if (tagInput.trim() && !tags.includes(tagInput.trim())) {
+      setTags([...tags, tagInput.trim()]);
+      setTagInput("");
+    }
+  };
 
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-           <Feather name="x" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <StatusPill variant={isRecording ? "listening" : "online"} 
-          label={isRecording ? "LISTENING" : isProcessing ? "PROCESSING" : "READY"} />
-        <View style={{ width: 44 }} />
+  // ─── Render Helpers ─────────────────────────────────────────────
+
+  const renderVoiceScreen = () => (
+    <View style={S.screenContent}>
+      {/* Waveform */}
+      <View style={S.voiceWaveSection}>
+        <Waveform active={isRecording} />
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-        <View style={styles.transcriptContainer}>
-          {isRecording && !transcript && (
-            <Text style={styles.listeningText}>
-              Listening{Array(recordingDuration % 4).fill('.').join('')}
-            </Text>
+      {/* Transcript */}
+      <View style={S.transcriptBox}>
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <Text style={S.voiceTranscriptText}>
+            {transcript || (isRecording ? "Listening..." : "Tap the mic to speak...")}
+            {isRecording && <View style={S.voiceCursor} />}
+          </Text>
+        </ScrollView>
+      </View>
+
+      {/* Entities */}
+      <View style={S.entitiesWrap}>
+        {entities.map((e, i) => <EntityTag key={i} entity={e} />)}
+        {isProcessing && <EntityTag entity={{ label: "ACTION", value: "PARSING...", icon: "⚙️" }} />}
+      </View>
+
+      {/* Confidence */}
+      {confidence > 0 && (
+        <View style={S.confSection}>
+          <ConfidenceBar value={confidence} />
+        </View>
+      )}
+
+      {/* Bottom Controls */}
+      <View style={S.bottomBar}>
+        <TouchableOpacity style={S.bottomIconBtn} onPress={() => setScreen("text")}>
+          <MaterialCommunityIcons name="keyboard-outline" size={24} color="#7c7c99" />
+        </TouchableOpacity>
+        
+        <Text style={S.statusText}>
+          {isProcessing ? "Analyzing intent..." : isRecording ? "Recording audio..." : "Intent ready"}
+        </Text>
+
+        <TouchableOpacity
+          onPress={isRecording ? stopRecording : startRecording}
+          style={[
+            S.mainMicBtn,
+            {
+              backgroundColor: isRecording ? "#FF4D4D" : "#7c6fe0",
+            }
+          ]}
+        >
+          {isProcessing ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <MaterialCommunityIcons name={isRecording ? "stop" : "microphone"} size={28} color="#fff" />
           )}
-          <Text style={styles.transcriptText}>
-            {transcript || (isRecording ? '' : 'Tap the microphone to start recording...')}
-            {isRecording && !transcript && (
-              <Text style={{ color: '#4A5070' }}> Listening to your voice...</Text>
-            )}
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  const renderTextScreen = () => (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={S.screenContent}
+    >
+      <ScrollView
+        style={S.scrollArea}
+        contentContainerStyle={{ paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={S.sectionLabel}>Natural Language Input</Text>
+        <View style={S.nlpInputWrap}>
+          <TextInput
+            multiline
+            numberOfLines={3}
+            value={nlpInput}
+            onChangeText={setNlpInput}
+            onBlur={handleExtract}
+            placeholder="Type your intent here... (e.g. 'Project meeting tomorrow at 2pm')"
+            placeholderTextColor="#555"
+            style={S.nlpInput}
+          />
+          <TouchableOpacity onPress={handleExtract} style={S.sparkleIcon}>
+            <Text style={{ fontSize: 18 }}>✨</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={S.structHeader}>Structured Intelligence</Text>
+
+        {/* Subject */}
+        <View style={S.fieldGroup}>
+          <Text style={S.fieldLabel}>Subject</Text>
+          <View style={S.pillRow}>
+            <View style={[S.activePill, { backgroundColor: colors.primary }]}>
+               <Text style={S.activePillText}>{subject || "Untitled Task"}</Text>
+            </View>
+            <TouchableOpacity style={S.addPill}>
+              <Text style={{ color: "#7c7c99", fontSize: 18 }}>+</Text>
+            </TouchableOpacity>
+          </View>
+          <TextInput
+            value={subject}
+            onChangeText={setSubject}
+            placeholder="Edit subject..."
+            placeholderTextColor="#555"
+            style={S.darkInput}
+          />
+        </View>
+
+        {/* Action Type */}
+        <View style={S.fieldGroup}>
+          <Text style={S.fieldLabel}>Action Type</Text>
+          <View style={S.catRow}>
+            {ACTION_CATEGORIES.map(cat => (
+              <TouchableOpacity
+                key={cat.id}
+                onPress={() => setActionType(cat.id)}
+                style={[
+                  S.catBtn,
+                  {
+                    backgroundColor: actionType === cat.id ? "#2a2a3e" : "#13131f",
+                    borderColor: actionType === cat.id ? colors.primary : "#2a2a3e",
+                  }
+                ]}
+              >
+                <Text>{cat.icon} </Text>
+                <Text style={{ color: actionType === cat.id ? "#fff" : "#7c7c99", fontWeight: "600", fontSize: 12 }}>{cat.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Date & Time */}
+        <View style={S.row}>
+           <View style={{ flex: 1 }}>
+              <Text style={S.fieldLabel}>Date</Text>
+              <View style={S.iconInputWrap}>
+                <Feather name="calendar" size={14} color="#7c7c99" />
+                <TextInput value={date} onChangeText={setDate} style={S.iconInput} placeholder="YYYY-MM-DD" placeholderTextColor="#555" />
+              </View>
+           </View>
+           <View style={{ flex: 1 }}>
+              <Text style={S.fieldLabel}>Time</Text>
+              <View style={S.iconInputWrap}>
+                <Feather name="clock" size={14} color="#7c7c99" />
+                <TextInput value={time} onChangeText={setTime} style={S.iconInput} placeholder="14:00" placeholderTextColor="#555" />
+              </View>
+           </View>
+        </View>
+
+        {/* Location */}
+        <View style={S.fieldGroup}>
+          <Text style={S.fieldLabel}>Location</Text>
+          <TextInput value={location} onChangeText={setLocation} style={S.darkInput} placeholder="Enter location..." placeholderTextColor="#555" />
+        </View>
+
+        {/* Priority */}
+        <View style={S.fieldGroup}>
+          <Text style={S.fieldLabel}>Priority</Text>
+          <View style={S.prioRow}>
+            {PRIORITY_OPTIONS.map(p => (
+              <TouchableOpacity
+                key={p}
+                onPress={() => setPriority(p)}
+                style={[
+                  S.prioBtn,
+                  {
+                    backgroundColor: priority === p ? PRIORITY_COLORS[p] : "#13131f",
+                    borderColor: priority === p ? PRIORITY_COLORS[p] : "#2a2a3e",
+                  }
+                ]}
+              >
+                <Text style={{ color: priority === p ? "#fff" : "#7c7c99", fontWeight: "700", fontSize: 11 }}>{p}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Status */}
+        <View style={S.fieldGroup}>
+          <Text style={S.fieldLabel}>Initial Status</Text>
+          <View style={S.prioRow}>
+            {STATUS_OPTIONS.map(s => (
+              <TouchableOpacity
+                key={s}
+                onPress={() => setTaskStatus(s)}
+                style={[
+                  S.prioBtn,
+                  {
+                    backgroundColor: taskStatus === s ? STATUS_COLORS[s] : "#13131f",
+                    borderColor: taskStatus === s ? STATUS_COLORS[s] : "#2a2a3e",
+                  }
+                ]}
+              >
+                <Text style={{ color: taskStatus === s ? "#fff" : "#7c7c99", fontWeight: "700", fontSize: 11 }}>{s}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={{ fontSize: 10, color: "#555", marginTop: 4 }}>
+            "Active" intents appear immediately in your homepage dashboard.
           </Text>
         </View>
 
-        {isProcessing && (
-          <View style={styles.parsingPanel}>
-             <Feather name="loader" size={16} color="#6C63FF" />
-             <Text style={styles.parsingText}>PARSING INTENT...</Text>
-             <View style={styles.dottedLoader}>
-                <View style={[styles.dot, { backgroundColor: '#6C63FF' }]} />
-                <View style={[styles.dot, { backgroundColor: '#6C63FF', opacity: 0.6 }]} />
-                <View style={[styles.dot, { backgroundColor: '#6C63FF', opacity: 0.3 }]} />
-             </View>
+        {/* Tags */}
+        <View style={S.fieldGroup}>
+          <Text style={S.fieldLabel}>Tags</Text>
+          <View style={S.tagsWrap}>
+            {tags.map(tag => (
+              <View key={tag} style={S.tagChip}>
+                <Text style={S.tagText}>#{tag}</Text>
+                <TouchableOpacity onPress={() => setTags(tags.filter(t => t !== tag))}>
+                   <Feather name="x" size={12} color="#a78bfa" />
+                </TouchableOpacity>
+              </View>
+            ))}
           </View>
-        )}
-
-        {transcript && !isProcessing && (
-          <View style={styles.confidenceRow}>
-             <View style={[styles.confBadge, { backgroundColor: 'rgba(0, 200, 150, 0.1)' }]}>
-                <Text style={{ color: '#00C896', fontFamily: Fonts.bold, fontSize: 10 }}>
-                  {transcriptionConfidence}% TRANSCRIPTION
-                </Text>
-             </View>
-             {parsedIntent && (
-               <View style={[styles.confBadge, { backgroundColor: 'rgba(0, 200, 150, 0.1)' }]}>
-                  <Text style={{ color: '#00C896', fontFamily: Fonts.bold, fontSize: 10 }}>
-                    {intentConfidence}% INTENT
-                  </Text>
-               </View>
-             )}
-          </View>
-        )}
+          <TextInput
+            value={tagInput}
+            onChangeText={setTagInput}
+            onSubmitEditing={addTag}
+            style={S.darkInput}
+            placeholder="Add tag and press enter..."
+            placeholderTextColor="#555"
+          />
+        </View>
       </ScrollView>
 
-      <View style={styles.footer}>
-         {isRecording && (
-           <View style={styles.recordingInfo}>
-             <Text style={styles.recordingTime}>{formatDuration(recordingDuration)}</Text>
-             <View style={styles.recordingIndicator}>
-               <View style={styles.recordingDot} />
-               <Text style={styles.recordingLabel}>Recording</Text>
-             </View>
-           </View>
-         )}
-         
-         <View style={styles.waveContainer}>
-            {bars.map((bar, i) => <WaveBar key={i} height={bar} />)}
-         </View>
+      {/* Text Screen Bottom Bar */}
+      <View style={S.bottomBar}>
+        <TouchableOpacity style={S.dictateBtn} onPress={() => setScreen("voice")}>
+           <MaterialCommunityIcons name="microphone" size={20} color="#a78bfa" />
+           <Text style={S.dictateBtnText}>Dictate</Text>
+        </TouchableOpacity>
 
-         {isTextMode ? (
-           <View style={styles.textInputWrapper}>
-              <TextInput 
-                placeholder="Type your command..."
-                placeholderTextColor="#5A6280"
-                style={styles.textInput}
-                autoFocus
-                value={textInput}
-                onChangeText={setTextInput}
-                onSubmitEditing={handleTextSubmit}
-                returnKeyType="send"
-              />
-              <TouchableOpacity 
-                style={[styles.sendIcon, !textInput.trim() && { opacity: 0.5 }]} 
-                onPress={handleTextSubmit}
-                disabled={!textInput.trim() || isProcessing}
-              >
-                 <Feather name="arrow-up" size={18} color="#FFFFFF" />
-              </TouchableOpacity>
-           </View>
-         ) : (
-           <View style={styles.controlsRow}>
-              <TouchableOpacity 
-                onPress={() => setIsTextMode(true)} 
-                style={styles.toggleBtn}
-                disabled={isProcessing}
-              >
-                 <MaterialCommunityIcons name="keyboard-outline" size={24} color="#5A6280" />
-              </TouchableOpacity>
-
-              <View style={styles.micOuter}>
-                 <Animated.View style={[styles.pulseRing, { transform: [{ scale: pulseAnim }], opacity: isRecording ? 0.4 : 0 }]} />
-                 <TouchableOpacity 
-                   onPress={toggleRecording} 
-                   activeOpacity={0.8}
-                   disabled={isProcessing}
-                   style={[styles.micBtn, { 
-                     backgroundColor: isRecording ? '#FF4D4D' : '#6C63FF',
-                     opacity: isProcessing ? 0.5 : 1 
-                   }]}
-                 >
-                    {isProcessing ? (
-                      <ActivityIndicator color="#FFFFFF" />
-                    ) : (
-                      <MaterialCommunityIcons 
-                        name={isRecording ? "stop" : "microphone"} 
-                        size={32} 
-                        color="#FFFFFF" 
-                      />
-                    )}
-                 </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity 
-                style={[styles.toggleBtn, isProcessing && { opacity: 0.5 }]} 
-                onPress={() => router.push('/hitl')}
-                disabled={isProcessing}
-              >
-                 <Feather name="shield" size={24} color="#5A6280" />
-              </TouchableOpacity>
-           </View>
-         )}
+        <TouchableOpacity style={[S.saveActionBtn, { backgroundColor: colors.primary }]} onPress={handleConfirmSave}>
+           {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={S.saveActionBtnText}>✦ Save Intent</Text>}
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
+
+  const handleConfirmSave = () => {
+     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+     handleSave();
+  };
+
+  return (
+    <SafeAreaView style={S.container}>
+      {/* Background Orbs */}
+      <View style={S.orb1} />
+      <View style={S.orb2} />
+
+      {/* Custom Header Tab Bar */}
+      <View style={[S.header, { paddingTop: insets.top + 10 }]}>
+        <TouchableOpacity style={S.closeBtn} onPress={() => router.back()}>
+          <Feather name="x" size={24} color="#7c7c99" />
+        </TouchableOpacity>
+
+        <View style={S.tabBar}>
+          {(["voice", "text"] as Screen[]).map(s => (
+            <TouchableOpacity
+              key={s}
+              onPress={() => setScreen(s)}
+              style={[
+                S.tabBtn,
+                screen === s && { backgroundColor: colors.primary }
+              ]}
+            >
+              <Text style={[S.tabText, screen === s && { color: "#fff" }]}>
+                {s === "voice" ? "🎤 Voice" : "✏️ Text"}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={{ width: 44 }} />
+      </View>
+
+      {/* Screen Content */}
+      <View style={{ flex: 1 }}>
+        {screen === "voice" ? renderVoiceScreen() : renderTextScreen()}
+      </View>
+    </SafeAreaView>
+  );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#080A10' },
-  orb: { position: 'absolute', width: 300, height: 300, borderRadius: 150, backgroundColor: 'rgba(108, 99, 255, 0.08)', filter: 'blur(60px)' },
-  orb1: { top: -100, right: -50 },
-  orb2: { bottom: 100, left: -100, backgroundColor: 'rgba(42, 60, 255, 0.06)' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20 },
-  backBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#1E2130', alignItems: 'center', justifyContent: 'center' },
-  content: { flex: 1 },
-  contentContainer: { paddingHorizontal: 32, paddingTop: 60, paddingBottom: 20 },
-  transcriptContainer: { marginBottom: 32 },
-  transcriptText: { fontFamily: Fonts.displayBold, fontSize: 32, color: '#FFFFFF', letterSpacing: -1, lineHeight: 40 },
-  listeningText: { fontFamily: Fonts.medium, fontSize: 16, color: '#6C63FF', marginBottom: 12 },
-  parsingPanel: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(18, 20, 28, 0.85)', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, width: 220, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', alignSelf: 'center' },
-  parsingText: { color: '#6C63FF', fontFamily: Fonts.bold, fontSize: 11, letterSpacing: 1.5, marginLeft: 12, marginRight: 8 },
-  dottedLoader: { flexDirection: 'row', gap: 4 },
-  dot: { width: 4, height: 4, borderRadius: 2 },
-  confidenceRow: { flexDirection: 'row', gap: 12, marginTop: 40, alignSelf: 'center' },
-  confBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  recordingInfo: { alignItems: 'center', marginBottom: 20 },
-  recordingTime: { fontFamily: Fonts.displayBold, fontSize: 24, color: '#FF4D4D' },
-  recordingIndicator: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  recordingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF4D4D' },
-  recordingLabel: { fontFamily: Fonts.medium, fontSize: 12, color: '#FF4D4D' },
-  footer: { paddingBottom: 60, paddingHorizontal: 24, alignItems: 'center' },
-  waveContainer: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 100, marginBottom: 40 },
-  waveBar: { width: 4, borderRadius: 2 },
-  controlsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingHorizontal: 20 },
-  toggleBtn: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
-  micOuter: { width: 120, height: 120, alignItems: 'center', justifyContent: 'center' },
-  micBtn: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', boxShadow: '0px 0px 20px rgba(108,99,255,0.6)', elevation: 15 },
-  pulseRing: { position: 'absolute', width: 90, height: 90, borderRadius: 45, borderWidth: 2, borderColor: '#6C63FF' },
-  textInputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#12141A', borderRadius: 20, paddingLeft: 20, paddingRight: 8, height: 56, width: '100%', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
-  textInput: { flex: 1, color: '#FFFFFF', fontFamily: Fonts.medium, fontSize: 16 },
-  sendIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#6C63FF', alignItems: 'center', justifyContent: 'center' },
+// ─── Styles ───────────────────────────────────────────────────────
+
+const S = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#0e0e18",
+  },
+  orb1: {
+    position: "absolute",
+    top: -50,
+    right: -50,
+    width: 250,
+    height: 250,
+    borderRadius: 125,
+    backgroundColor: "rgba(124,111,224,0.12)",
+  },
+  orb2: {
+    position: "absolute",
+    bottom: 50,
+    left: -100,
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    backgroundColor: "rgba(167,139,250,0.08)",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingBottom: 15,
+  },
+  closeBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#1a1a2e",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabBar: {
+    flexDirection: "row",
+    backgroundColor: "#13131f",
+    borderRadius: 25,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: "#1e1e2e",
+  },
+  tabBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  tabText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#555",
+    letterSpacing: 0.5,
+  },
+  screenContent: {
+    flex: 1,
+  },
+  voiceWaveSection: {
+    height: 100,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 20,
+  },
+  waveRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  waveBar: {
+    width: 3,
+    borderRadius: 2,
+    minHeight: 8,
+  },
+  transcriptBox: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingTop: 20,
+  },
+  voiceTranscriptText: {
+    fontSize: 28,
+    color: "#e0dff5",
+    fontFamily: Fonts.medium,
+    lineHeight: 38,
+  },
+  voiceCursor: {
+    width: 3,
+    height: 28,
+    backgroundColor: "#7c6fe0",
+    marginLeft: 4,
+  },
+  entitiesWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 20,
+    gap: 8,
+    marginTop: 20,
+  },
+  confSection: {
+    paddingHorizontal: 20,
+    marginTop: 20,
+  },
+  confRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  confLabel: {
+    fontSize: 9,
+    color: "#555",
+    fontFamily: Fonts.bold,
+    letterSpacing: 1.2,
+  },
+  confTrack: {
+    flex: 1,
+    height: 4,
+    backgroundColor: "#1e1e2e",
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  confFill: {
+    height: "100%",
+    backgroundColor: "#7c6fe0",
+  },
+  confValue: {
+    fontSize: 10,
+    color: "#a78bfa",
+    fontFamily: Fonts.bold,
+  },
+  entityTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(124,111,224,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(124,111,224,0.3)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 15,
+  },
+  entityIcon: { fontSize: 14, marginRight: 4 },
+  entityLabel: { fontSize: 10, color: "#7c7c99", fontFamily: Fonts.bold },
+  entityValue: { fontSize: 10, color: "#a78bfa", fontFamily: Fonts.bold },
+  bottomBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderColor: "#1a1a2e",
+  },
+  bottomIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#1a1a2e",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statusText: {
+    flex: 1,
+    color: "#555",
+    fontSize: 13,
+    marginLeft: 12,
+    fontFamily: Fonts.regular,
+  },
+  mainMicBtn: {
+    width: 55,
+    height: 55,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#7c6fe0",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  scrollArea: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  sectionLabel: {
+    fontSize: 10,
+    color: "#555",
+    fontFamily: Fonts.bold,
+    letterSpacing: 1.5,
+    marginBottom: 8,
+    textTransform: "uppercase",
+  },
+  nlpInputWrap: {
+    backgroundColor: "#13131f",
+    borderWidth: 1,
+    borderColor: "#2a2a3e",
+    borderRadius: 15,
+    padding: 12,
+    marginBottom: 20,
+  },
+  nlpInput: {
+    color: "#e0dff5",
+    fontSize: 15,
+    fontFamily: Fonts.regular,
+    textAlignVertical: "top",
+    minHeight: 80,
+  },
+  sparkleIcon: {
+    position: "absolute",
+    bottom: 12,
+    right: 12,
+  },
+  structHeader: {
+    fontSize: 18,
+    fontFamily: Fonts.displayBold,
+    color: "#e0dff5",
+    marginBottom: 15,
+  },
+  fieldGroup: {
+    marginBottom: 20,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    color: "#7c7c99",
+    fontFamily: Fonts.medium,
+    marginBottom: 8,
+  },
+  pillRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 10,
+  },
+  activePill: {
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  activePillText: {
+    color: "#fff",
+    fontFamily: Fonts.bold,
+    fontSize: 13,
+  },
+  addPill: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#1a1a2e",
+    borderWidth: 1,
+    borderColor: "#2a2a3e",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  darkInput: {
+    backgroundColor: "#13131f",
+    borderWidth: 1,
+    borderColor: "#2a2a3e",
+    borderRadius: 12,
+    padding: 12,
+    color: "#e0dff5",
+    fontSize: 14,
+    fontFamily: Fonts.regular,
+  },
+  catRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  catBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  row: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 20,
+  },
+  iconInputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#13131f",
+    borderWidth: 1,
+    borderColor: "#2a2a3e",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 45,
+  },
+  iconInput: {
+    flex: 1,
+    color: "#e0dff5",
+    fontSize: 13,
+    marginLeft: 8,
+    fontFamily: Fonts.regular,
+  },
+  prioRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  prioBtn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  tagsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 10,
+  },
+  tagChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(124,111,224,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(124,111,224,0.3)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+  },
+  tagText: {
+    fontSize: 12,
+    color: "#a78bfa",
+    fontFamily: Fonts.bold,
+    marginRight: 6,
+  },
+  dictateBtn: {
+    flex: 0.4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#1a1a2e",
+    borderWidth: 1,
+    borderColor: "#2a2a3e",
+    borderRadius: 12,
+    height: 50,
+    gap: 8,
+  },
+  dictateBtnText: {
+    color: "#a78bfa",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  saveActionBtn: {
+    flex: 0.5,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    height: 50,
+    shadowColor: "#7c6fe0",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  saveActionBtnText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 15,
+  },
 });

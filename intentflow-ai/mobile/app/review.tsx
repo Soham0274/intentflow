@@ -6,7 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { fetchHitlById, confirmHitl } from '../services/api';
+import { fetchHitlById, confirmHitl } from '@/services/api';
 import { ActivityIndicator } from 'react-native';
 
 // Field row wrapper

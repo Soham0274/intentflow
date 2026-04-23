@@ -1,0 +1,268 @@
+{
+  "name": "03 - Smart Reminder System (Enhanced)",
+  "nodes": [
+    {
+      "id": "a3000000-0003-0003-0003-000000000001",
+      "name": "Hourly Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 * * * *" }]
+        }
+      }
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000002",
+      "name": "Query Tasks Due in 2-3 Hours",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [460, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  t.id,\n  t.user_id,\n  t.title,\n  t.due_date,\n  t.due_time,\n  t.priority,\n  t.category,\n  u.timezone,\n  u.notification_settings,\n  u.email AS user_email,\n  u.name AS user_name,\n  t.reminder_count\nFROM tasks t\nJOIN users u ON t.user_id = u.id\nWHERE t.status = 'active'\n  AND t.due_date = CURRENT_DATE\n  AND t.due_time IS NOT NULL\n  AND t.due_time BETWEEN\n    (CURRENT_TIME AT TIME ZONE COALESCE(u.timezone, 'UTC')) + INTERVAL '2 hours'\n    AND (CURRENT_TIME AT TIME ZONE COALESCE(u.timezone, 'UTC')) + INTERVAL '3 hours'\n  AND (\n    t.last_reminded_at IS NULL\n    OR t.last_reminded_at::date < CURRENT_DATE\n  )\n  AND (t.reminder_count IS NULL OR t.reminder_count < 3)\nORDER BY t.priority DESC, t.due_time ASC;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000003",
+      "name": "Has Tasks to Remind?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000004",
+      "name": "Filter Quiet Hours",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 220],
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst filtered = items.filter(item => {\n  let settings;\n  try {\n    settings = typeof item.json.notification_settings === 'string'\n      ? JSON.parse(item.json.notification_settings)\n      : item.json.notification_settings || {};\n  } catch (e) {\n    return true;\n  }\n\n  // Skip if reminders disabled\n  if (settings.reminders === false) return false;\n\n  // Check quiet hours\n  if (!settings.quiet_hours?.enabled) return true;\n\n  const timezone = item.json.timezone || 'UTC';\n  const now = new Date().toLocaleString('en-US', { timeZone: timezone, hour12: false });\n  const hour = new Date(now).getHours();\n  \n  const start = parseInt((settings.quiet_hours.start || '22').split(':')[0]);\n  const end   = parseInt((settings.quiet_hours.end   || '07').split(':')[0]);\n\n  if (start > end) {\n    return hour < start && hour >= end;\n  }\n  return hour < start || hour >= end;\n});\n\nif (filtered.length === 0) return [];\nreturn filtered;"
+      }
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000005",
+      "name": "Has Tasks After Quiet Hours?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 220],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "cond2",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000006",
+      "name": "Filter Priority Tasks",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 160],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "highPriority",
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "high",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000007",
+      "name": "Loop Over Reminders",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1560, 120],
+      "parameters": { "batchSize": 1, "options": {} }
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000008",
+      "name": "Send High Priority Reminder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 80],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/notifications/send",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "user_id": "={{ $json.user_id }}",
+          "task_id": "={{ $json.id }}",
+          "message": "=🔴 HIGH PRIORITY: '{{ $json.title }}' is due at {{ $json.due_time }} — {{ Math.floor(Math.abs(new Date(new Date().toLocaleString('en-US', { timeZone: $json.timezone || 'UTC' })) - new Date(new Date().toLocaleDateString('en-US', { timeZone: $json.timezone || 'UTC' }) + 'T' + $json.due_time)) / 60000) }} minutes remaining!",
+          "type": "reminder_urgent",
+          "urgency": "high",
+          "channels": ["push", "email"],
+          "data": "={{ JSON.stringify({ task_id: $json.id, due_time: $json.due_time, priority: $json.priority }) }}"
+        },
+        "options": { "timeout": 10000 }
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000009",
+      "name": "Send Standard Reminder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 160],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/notifications/send",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "user_id": "={{ $json.user_id }}",
+          "task_id": "={{ $json.id }}",
+          "message": "=⏰ Reminder: '{{ $json.title }}' is due at {{ $json.due_time }}",
+          "type": "reminder",
+          "urgency": "normal",
+          "data": "={{ JSON.stringify({ task_id: $json.id, due_time: $json.due_time, priority: $json.priority }) }}"
+        },
+        "options": { "timeout": 10000 }
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000010",
+      "name": "Mark as Reminded",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2000, 120],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE tasks SET last_reminded_at = NOW(), reminder_count = COALESCE(reminder_count, 0) + 1 WHERE id = '{{ $('Loop Over Reminders').item.json.id }}';"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } },
+      "onError": "continue"
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000011",
+      "name": "Log Reminder Cycle",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2220, 120],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_logs (workflow_id, run_date, tasks_processed, execution_status, created_at) VALUES ('intentflow-automation-03', CURRENT_DATE, {{ $('Filter Quiet Hours').all().length || 0 }}, 'success', NOW());"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } },
+      "onError": "continue"
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000012",
+      "name": "Nothing to Remind — Stop",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [900, 400],
+      "parameters": {}
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000013",
+      "name": "All in Quiet Hours — Stop",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1340, 380],
+      "parameters": {}
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000014",
+      "name": "Catch Errors",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [900, 520],
+      "parameters": {}
+    },
+    {
+      "id": "a3000000-0003-0003-0003-000000000015",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1120, 520],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_errors (workflow_id, node_name, error_message, error_data, created_at) VALUES ('intentflow-automation-03', '{{ $json.errorNode }}', '{{ $json.errorMessage }}', '{{ JSON.stringify($json) }}', NOW());"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    }
+  ],
+  "connections": {
+    "Hourly Trigger": {
+      "main": [[{ "node": "Query Tasks Due in 2-3 Hours", "type": "main", "index": 0 }]]
+    },
+    "Query Tasks Due in 2-3 Hours": {
+      "main": [[{ "node": "Has Tasks to Remind?", "type": "main", "index": 0 }]]
+    },
+    "Has Tasks to Remind?": {
+      "main": [
+        [{ "node": "Filter Quiet Hours", "type": "main", "index": 0 }],
+        [{ "node": "Nothing to Remind — Stop", "type": "main", "index": 0 }]
+      ]
+    },
+    "Filter Quiet Hours": {
+      "main": [[{ "node": "Has Tasks After Quiet Hours?", "type": "main", "index": 0 }]]
+    },
+    "Has Tasks After Quiet Hours?": {
+      "main": [
+        [{ "node": "Filter Priority Tasks", "type": "main", "index": 0 }],
+        [{ "node": "All in Quiet Hours — Stop", "type": "main", "index": 0 }]
+      ]
+    },
+    "Filter Priority Tasks": {
+      "main": [
+        [{ "node": "Loop Over Reminders", "type": "main", "index": 0 }]
+      ]
+    },
+    "Loop Over Reminders": {
+      "main": [[{ "node": "Send High Priority Reminder", "type": "main", "index": 0 }, { "node": "Send Standard Reminder", "type": "main", "index": 0 }]]
+    },
+    "Send High Priority Reminder": {
+      "main": [[{ "node": "Mark as Reminded", "type": "main", "index": 0 }]]
+    },
+    "Send Standard Reminder": {
+      "main": [[{ "node": "Mark as Reminded", "type": "main", "index": 0 }]]
+    },
+    "Mark as Reminded": {
+      "main": [[{ "node": "Loop Over Reminders", "type": "main", "index": 0 }]]
+    },
+    "Catch Errors": {
+      "main": [[{ "node": "Log Error", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1", "errorWorkflow": "intentflow-automation-03" },
+  "versionId": "a3000000-0003-0003-0003-000000000100",
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "intentflow-automation-03",
+  "tags": [{ "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z", "id": "tag-core", "name": "core" }]
+}

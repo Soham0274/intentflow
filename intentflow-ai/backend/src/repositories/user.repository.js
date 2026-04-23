@@ -14,7 +14,7 @@ async function findOrCreate(userId, userData) {
     throw new Error('User email is required but was not found in Auth session.');
   }
 
-  // 1. Try to find existing user by id
+  // 1. Try to find existing user by strict id matching (Auth ID must match DB ID)
   const { data: existing, error: findError } = await supabase
     .from('users')
     .select('*')
@@ -25,7 +25,7 @@ async function findOrCreate(userId, userData) {
     throw findError;
   }
 
-  // 2. If id exists, update and return
+  // 2. If strict id exists, update timestamp and return
   if (existing) {
     const { data: updated, error } = await supabase
       .from('users')
@@ -38,19 +38,9 @@ async function findOrCreate(userId, userData) {
     return updated;
   }
 
-  // 3. Try to find by email if ID lookup failed (prevents unique constraint crash)
-  const { data: byEmail, error: emailError } = await supabase
-    .from('users')
-    .select('*')
-    .eq('email', email)
-    .maybeSingle(); // maybeSingle doesn't throw on 0 results, unlike single()
-  
-  if (byEmail) {
-    console.warn(`[User Repository] AUTH/DB ID MISMATCH for ${email}. Auth ID: ${userId}, Existing DB ID: ${byEmail.id}. Using DB record.`);
-    return byEmail;
-  }
-
-  // 4. User doesn't exist by id OR email — insert fresh
+  // 3. User doesn't exist by id — insert fresh
+  // We MUST NOT merge accounts automatically by email without Auth linking,
+  // as it causes data leaks across identities.
   console.log(`[User Repository] Creating new record for ${email} with ID ${userId}`);
   const { data: created, error: insertError } = await supabase
     .from('users')

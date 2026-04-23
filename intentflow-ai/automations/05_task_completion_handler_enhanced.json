@@ -1,0 +1,346 @@
+{
+  "name": "05 - Task Completion Handler (Enhanced)",
+  "nodes": [
+    {
+      "id": "a5000000-0005-0005-0005-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "task-completed",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000002",
+      "name": "Validate Secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.headers['x-webhook-secret'] }}",
+              "rightValue": "={{ $env.N8N_WEBHOOK_SECRET }}",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000002b",
+      "name": "Validate Required Fields",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "req1",
+              "leftValue": "={{ $json.body.data.task_id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
+            },
+            {
+              "id": "req2",
+              "leftValue": "={{ $json.body.user_id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000003",
+      "name": "Find Dependent Tasks",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [900, 220],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, user_id, title, blocked_by_task_id FROM tasks\nWHERE blocked_by_task_id = '{{ $json.body.data.task_id }}'\n  AND status = 'pending';"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000004",
+      "name": "Has Blocked Tasks?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 220],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "cond2",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000005",
+      "name": "Unblock Dependent Tasks",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1340, 160],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE tasks\nSET status = 'active', blocked_by_task_id = NULL, unblocked_at = NOW()\nWHERE blocked_by_task_id = '{{ $('Validate Required Fields').item.json.body.data.task_id }}';"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } },
+      "onError": "continue"
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000006",
+      "name": "Loop Unblocked Tasks",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1560, 160],
+      "parameters": { "batchSize": 1, "options": {} }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000007",
+      "name": "Notify Unblocked",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 160],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/notifications/send",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "user_id": "={{ $json.user_id }}",
+          "task_id": "={{ $json.id }}",
+          "message": "=🔓 A blocked task is now ready: {{ $json.title }}",
+          "type": "unblocked",
+          "data": "={{ JSON.stringify({ task_id: $json.id, unblocked_by: $('Validate Required Fields').item.json.body.data.task_id }) }}"
+        },
+        "options": { "timeout": 10000 }
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000008",
+      "name": "Update Project Progress",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1340, 320],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE projects\nSET completed_tasks = completed_tasks + 1,\n    progress = ROUND((completed_tasks + 1)::numeric / total_tasks * 100)\nWHERE id = (\n  SELECT project_id FROM tasks WHERE id = '{{ $('Validate Required Fields').item.json.body.data.task_id }}'\n)\n  AND id IS NOT NULL\nRETURNING *;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } },
+      "onError": "continue"
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000009",
+      "name": "Count Today Completions",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1560, 320],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) AS completed_today,\n  (SELECT COUNT(*) FROM tasks\n   WHERE user_id = '{{ $('Validate Required Fields').item.json.body.user_id }}'\n   AND status = 'completed'\n   AND completed_at::date = CURRENT_DATE - 1) AS completed_yesterday,\n  (SELECT MAX(streak_count) FROM user_streaks WHERE user_id = '{{ $('Validate Required Fields').item.json.body.user_id }}') AS current_streak\nFROM tasks\nWHERE user_id = '{{ $('Validate Required Fields').item.json.body.user_id }}'\n  AND status = 'completed'\n  AND completed_at::date = CURRENT_DATE;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000010",
+      "name": "Streak Milestone?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 320],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "cond3",
+              "leftValue": "={{ $json.completed_today }}",
+              "rightValue": 3,
+              "operator": { "type": "number", "operation": "gte" }
+            },
+            {
+              "id": "cond4",
+              "leftValue": "={{ $json.completed_today % 5 === 0 || $json.completed_today % 10 === 0 }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000011",
+      "name": "Send Celebration",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 280],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/notifications/send",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "user_id": "={{ $('Validate Required Fields').item.json.body.user_id }}",
+          "message": "=🎉 You're on fire! {{ $('Count Today Completions').item.json.completed_today }} tasks completed today!{{ $('Count Today Completions').item.json.current_streak > 1 ? ' Streak: ' + $('Count Today Completions').item.json.current_streak + ' days!' : '' }}",
+          "type": "celebration",
+          "urgency": "normal",
+          "data": "={{ JSON.stringify({ tasks_today: $('Count Today Completions').item.json.completed_today, streak: $('Count Today Completions').item.json.current_streak }) }}"
+        },
+        "options": { "timeout": 10000 }
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000012",
+      "name": "Update Streak",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2000, 360],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO user_streaks (user_id, streak_date, streak_count, created_at)\nVALUES ('{{ $('Validate Required Fields').item.json.body.user_id }}', CURRENT_DATE, COALESCE((SELECT streak_count + 1 FROM user_streaks WHERE user_id = '{{ $('Validate Required Fields').item.json.body.user_id }}' AND streak_date = CURRENT_DATE - 1), 1), NOW())\nON CONFLICT (user_id, streak_date)\nDO UPDATE SET streak_count = EXCLUDED.streak_count;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } },
+      "onError": "continue"
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000013",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2220, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"task_id\": \"{{ $('Validate Required Fields').item.json.body.data.task_id }}\", \"completed\": true, \"unblocked_count\": {{ $('Find Dependent Tasks').item.json.length || 0 }}}",
+        "options": { "responseCode": 200 }
+      }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000014",
+      "name": "Unauthorized",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [680, 460],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"error\": \"Unauthorized\", \"code\": \"AUTH_FAILED\"}",
+        "options": { "responseCode": 401 }
+      }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000015",
+      "name": "Missing Fields",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [900, 440],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"error\": \"Missing required fields: task_id, user_id\", \"code\": \"VALIDATION_ERROR\"}",
+        "options": { "responseCode": 400 }
+      }
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000016",
+      "name": "Catch Errors",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [900, 560],
+      "parameters": {}
+    },
+    {
+      "id": "a5000000-0005-0005-0005-000000000017",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1120, 560],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_errors (workflow_id, node_name, error_message, error_data, created_at) VALUES ('intentflow-automation-05', '{{ $json.errorNode }}', '{{ $json.errorMessage }}', '{{ JSON.stringify($json) }}', NOW());"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Validate Secret", "type": "main", "index": 0 }]]
+    },
+    "Validate Secret": {
+      "main": [
+        [{ "node": "Validate Required Fields", "type": "main", "index": 0 }],
+        [{ "node": "Unauthorized", "type": "main", "index": 0 }]
+      ]
+    },
+    "Validate Required Fields": {
+      "main": [
+        [{ "node": "Find Dependent Tasks", "type": "main", "index": 0 }],
+        [{ "node": "Missing Fields", "type": "main", "index": 0 }]
+      ]
+    },
+    "Find Dependent Tasks": {
+      "main": [[{ "node": "Has Blocked Tasks?", "type": "main", "index": 0 }]]
+    },
+    "Has Blocked Tasks?": {
+      "main": [
+        [{ "node": "Unblock Dependent Tasks", "type": "main", "index": 0 }],
+        [{ "node": "Update Project Progress", "type": "main", "index": 0 }]
+      ]
+    },
+    "Unblock Dependent Tasks": {
+      "main": [[{ "node": "Loop Unblocked Tasks", "type": "main", "index": 0 }]]
+    },
+    "Loop Unblocked Tasks": {
+      "main": [[{ "node": "Notify Unblocked", "type": "main", "index": 0 }]]
+    },
+    "Notify Unblocked": {
+      "main": [[{ "node": "Loop Unblocked Tasks", "type": "main", "index": 0 }]]
+    },
+    "Update Project Progress": {
+      "main": [[{ "node": "Count Today Completions", "type": "main", "index": 0 }]]
+    },
+    "Count Today Completions": {
+      "main": [[{ "node": "Streak Milestone?", "type": "main", "index": 0 }]]
+    },
+    "Streak Milestone?": {
+      "main": [
+        [{ "node": "Send Celebration", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send Celebration": {
+      "main": [[{ "node": "Update Streak", "type": "main", "index": 0 }]]
+    },
+    "Update Streak": {
+      "main": [[{ "node": "Success Response", "type": "main", "index": 0 }]]
+    },
+    "Catch Errors": {
+      "main": [[{ "node": "Log Error", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1", "errorWorkflow": "intentflow-automation-05" },
+  "versionId": "a5000000-0005-0005-0005-000000000100",
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "intentflow-automation-05",
+  "tags": [{ "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z", "id": "tag-core", "name": "core" }]
+}

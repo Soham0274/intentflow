@@ -47,9 +47,9 @@ export const LightColors = {
 export const Fonts = {
   regular: 'DMSans_400Regular',
   medium: 'DMSans_500Medium',
-  semiBold: 'DMSans_600SemiBold',
+  semiBold: 'DMSans_500Medium', // DM Sans doesn't have 600, use 500
   bold: 'DMSans_700Bold',
-  extraBold: 'DMSans_800ExtraBold',
+  extraBold: 'DMSans_700Bold', // DM Sans doesn't have 800, use 700
   display: 'Syne_600SemiBold',
   displayBold: 'Syne_700Bold',
   displayExtra: 'Syne_800ExtraBold',

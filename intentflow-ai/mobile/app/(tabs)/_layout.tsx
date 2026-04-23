@@ -74,10 +74,7 @@ function GlassTabBar() {
 
   const handleMic = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (activeRoute !== "index") {
-      router.navigate("/");
-    }
-    triggerVoice();
+    router.push("/voice");
   };
 
   const bottomOffset = (insets.bottom || 16) + 12;
@@ -139,17 +136,17 @@ function GlassTabBar() {
             active={activeRoute === "index"}
           />
           <TabButton
-            name="collections"
-            icon="grid"
-            label="Areas"
-            active={activeRoute === "collections"}
+            name="intents"
+            icon="list"
+            label="Intents"
+            active={activeRoute === "intents"}
           />
           <View style={styles.micSpacer} />
           <TabButton
-            name="hitl"
-            icon="shield"
-            label="Review"
-            active={activeRoute === "hitl"}
+            name="calendar"
+            icon="calendar"
+            label="Calendar"
+            active={activeRoute === "calendar"}
           />
           <TabButton
             name="profile"
@@ -176,11 +173,11 @@ export default function TabLayout() {
       screenOptions={{ headerShown: false }}
     >
       <Tabs.Screen name="index" />
-      <Tabs.Screen name="collections" />
-      <Tabs.Screen name="hitl" />
+      <Tabs.Screen name="calendar" />
+      <Tabs.Screen name="intents" />
       <Tabs.Screen name="profile" />
       <Tabs.Screen name="alerts" options={{ href: null }} />
-      <Tabs.Screen name="confirm" options={{ href: null }} />
+      <Tabs.Screen name="collections" options={{ href: null }} />
     </Tabs>
   );
 }
@@ -262,7 +259,7 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 10,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "DMSans_500Medium",
     letterSpacing: 0.1,
   },
   micSpacer: {

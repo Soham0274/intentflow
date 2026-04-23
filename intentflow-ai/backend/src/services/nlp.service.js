@@ -16,6 +16,48 @@ const textModel = genAI.getGenerativeModel({
   //                              ↑ lower = more deterministic JSON output
 });
 
+// ─── Gemini Retry with Exponential Backoff ───────────────────────────────────
+// Phase A4 — intentflow-late-stage-prompt.md
+// Handles: 429 rate-limits, 503 overloads, transient network errors
+// Strategy: up to 3 attempts, delays: 1s → 2s → 4s
+async function callGeminiWithRetry(prompt, maxRetries = 3) {
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await textModel.generateContent(prompt);
+      const text = result.response?.text?.() || '';
+
+      // Guard: Gemini occasionally returns empty string on overload
+      if (!text.trim()) {
+        throw new Error('Gemini returned empty response (model overloaded or quota hit)');
+      }
+
+      if (attempt > 1) {
+        console.warn(`[GEMINI:Retry] ✅ Succeeded on attempt ${attempt}`);
+      }
+      return text;
+    } catch (err) {
+      lastError = err;
+      const isRetryable =
+        err.message?.includes('429') ||
+        err.message?.includes('503') ||
+        err.message?.includes('overloaded') ||
+        err.message?.includes('empty response') ||
+        err.message?.includes('ECONNRESET') ||
+        err.message?.includes('ETIMEDOUT');
+
+      if (!isRetryable || attempt === maxRetries) break;
+
+      const delayMs = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+      console.warn(`[GEMINI:Retry] Attempt ${attempt}/${maxRetries} failed: ${err.message.substring(0, 80)} — retrying in ${delayMs}ms`);
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+
+  console.error(`[GEMINI:Retry] ❌ All ${maxRetries} attempts failed. Last error: ${lastError?.message}`);
+  throw lastError;
+}
+
 // ─── Zod Schema ───────────────────────────────────────────────────────────────
 const taskSchema = z.object({
   title:       z.string().min(1).max(80),
@@ -165,8 +207,7 @@ async function extractTasks(rawText, userId, persist = true) {
 
   let formattedTasks = [];
   try {
-    const rawRes = await textModel.generateContent(prompt);
-    const text   = rawRes.response?.text?.() || '';
+    const text   = await callGeminiWithRetry(prompt); // ← retry wrapper (A4)
     const parsed = extractJSON(text);
 
     if (Array.isArray(parsed)) {
@@ -210,10 +251,10 @@ async function parseIntent(text) {
 Text: "${text}"`;
 
   try {
-    const rawRes = await textModel.generateContent(prompt);
-    const parsed = extractJSON(rawRes.response?.text?.() || '');
+    const raw    = await callGeminiWithRetry(prompt); // ← retry wrapper (A4)
+    const parsed = extractJSON(raw);
     if (parsed?.intent) return parsed;
-  } catch { /* fall through */ }
+  } catch { /* fall through to safe default */ }
 
   return { intent: 'unknown', priority: 'medium', category: 'work' };
 }

@@ -1,0 +1,371 @@
+{
+  "name": "07 - Priority Rebalancing Agent (Enhanced)",
+  "nodes": [
+    {
+      "id": "a7000000-0007-0007-0007-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rebalance-priorities",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000002",
+      "name": "Daily 6PM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 460],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 18 * * *" }]
+        }
+      }
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000003",
+      "name": "Merge Triggers",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [460, 380],
+      "parameters": { "mode": "chooseBranch", "chooseBranchMode": "waitForAll", "output": "both" }
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000004",
+      "name": "Validate User Input",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 380],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "userCheck",
+              "leftValue": "={{ $json.body?.user_id || $json.user_id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000005",
+      "name": "Get User Active Tasks",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [900, 340],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  id,\n  title,\n  description,\n  due_date,\n  priority,\n  created_at,\n  category,\n  status,\n  estimated_minutes,\n  COALESCE(estimated_minutes, 30) as task_weight,\n  CASE WHEN due_date IS NOT NULL THEN due_date - CURRENT_DATE ELSE NULL END AS days_until_due\nFROM tasks\nWHERE user_id = '{{ $json.body?.user_id || $json.user_id }}'\n  AND status = 'active'\nORDER BY due_date ASC NULLS LAST\nLIMIT 50;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000006",
+      "name": "Has Tasks?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 340],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "tasksExist",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 3,
+              "operator": { "type": "number", "operation": "gte" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000007",
+      "name": "AI Priority Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 280],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENAI_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\n  \"model\": \"gpt-4\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a productivity AI. Analyze the task list and suggest priority adjustments. Return ONLY valid JSON: {\\\"adjustments\\\": [{\\\"task_id\\\": \\\"uuid\\\", \\\"new_priority\\\": \\\"high|medium|low\\\", \\\"reason\\\": \\\"brief reason\\\", \\\"confidence\\\": 0-100}]}. Only include tasks that need a priority change. Prioritize tasks due soon, high-impact work, and tasks blocking others.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Current tasks: {{ JSON.stringify($json) }}\"\n    }\n  ],\n  \"response_format\": { \"type\": \"json_object\" },\n  \"temperature\": 0.2\n}",
+        "options": { "timeout": 30000 }
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000008",
+      "name": "AI Call Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1560, 280],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "success",
+              "leftValue": "={{ $json.choices && $json.choices.length > 0 }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000009",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 240],
+      "parameters": {
+        "jsCode": "const content = $input.item.json.choices[0].message.content;\nlet parsed;\ntry {\n  parsed = typeof content === 'string' ? JSON.parse(content) : content;\n} catch (e) {\n  return [{ json: { adjustments: [], error: 'Parse failed' } }];\n}\n\n// Validate and filter adjustments\nconst valid = (parsed.adjustments || []).filter(a => {\n  return a.task_id && a.new_priority && ['high', 'medium', 'low'].includes(a.new_priority);\n});\n\nreturn [{ json: { adjustments: valid } }];"
+      }
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000010",
+      "name": "Has Adjustments?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2000, 240],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "hasAdjust",
+              "leftValue": "={{ $json.adjustments.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000011",
+      "name": "Apply Priority Updates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 200],
+      "parameters": {
+        "jsCode": "const adjustments = $input.item.json.adjustments;\nconst userId = $('Validate User Input').item.json.body?.user_id || $('Validate User Input').item.json.user_id;\n\nconst statements = adjustments.map(a =>\n  `UPDATE tasks SET priority = '${a.new_priority}', ai_rebalanced_at = NOW(), ai_rebalance_reason = '${a.reason.replace(/'/g, \"''\")}' WHERE id = '${a.task_id}' AND user_id = '${userId}';`\n).join('\\n');\n\nreturn [{ json: { sql: statements, count: adjustments.length, adjustments, user_id: userId } }];"
+      }
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000012",
+      "name": "Execute Priority Updates",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2440, 200],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } },
+      "onError": "continue"
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000013",
+      "name": "Notify User of Changes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2660, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/notifications/send",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "user_id": "={{ $('Apply Priority Updates').item.json.user_id }}",
+          "message": "=🤖 AI rebalanced {{ $('Apply Priority Updates').item.json.count }} task priorities based on deadlines and impact. Review the changes?",
+          "type": "priority_rebalanced",
+          "data": "={{ JSON.stringify($('Apply Priority Updates').item.json.adjustments) }}",
+          "action_url": "intentflow://tasks/priority-review"
+        },
+        "options": { "timeout": 10000 }
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000014",
+      "name": "Log Rebalance Activity",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2880, 200],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ai_rebalance_logs (user_id, tasks_analyzed, changes_made, adjustments_json, created_at) VALUES ('{{ $('Apply Priority Updates').item.json.user_id }}', {{ $('Get User Active Tasks').item.json.length }}, {{ $('Apply Priority Updates').item.json.count }}, '{{ JSON.stringify($('Apply Priority Updates').item.json.adjustments) }}'::jsonb, NOW());"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } },
+      "onError": "continue"
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000015",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [3100, 200],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"adjustments_made\": {{ $('Apply Priority Updates').item.json.count || 0 }}, \"message\": \"Priority rebalancing completed\"}",
+        "options": { "responseCode": 200 }
+      }
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000016",
+      "name": "No Adjustments Needed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2220, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"adjustments_made\": 0, \"message\": \"No priority adjustments needed at this time\"}",
+        "options": { "responseCode": 200 }
+      }
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000017",
+      "name": "AI Call Failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1780, 380],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": false, \"error\": \"AI analysis failed\", \"code\": \"AI_ERROR\"}",
+        "options": { "responseCode": 503 }
+      }
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000018",
+      "name": "Insufficient Tasks",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1340, 420],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": false, \"error\": \"At least 3 active tasks required for rebalancing\", \"code\": \"INSUFFICIENT_TASKS\"}",
+        "options": { "responseCode": 400 }
+      }
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000019",
+      "name": "Missing User ID",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [900, 500],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": false, \"error\": \"Missing user_id parameter\", \"code\": \"MISSING_PARAM\"}",
+        "options": { "responseCode": 400 }
+      }
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000020",
+      "name": "Catch Errors",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [900, 620],
+      "parameters": {}
+    },
+    {
+      "id": "a7000000-0007-0007-0007-000000000021",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1120, 620],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_errors (workflow_id, node_name, error_message, error_data, created_at) VALUES ('intentflow-automation-07', '{{ $json.errorNode }}', '{{ $json.errorMessage }}', '{{ JSON.stringify($json) }}', NOW());"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Merge Triggers", "type": "main", "index": 0 }]]
+    },
+    "Daily 6PM Trigger": {
+      "main": [[{ "node": "Merge Triggers", "type": "main", "index": 1 }]]
+    },
+    "Merge Triggers": {
+      "main": [[{ "node": "Validate User Input", "type": "main", "index": 0 }]]
+    },
+    "Validate User Input": {
+      "main": [
+        [{ "node": "Get User Active Tasks", "type": "main", "index": 0 }],
+        [{ "node": "Missing User ID", "type": "main", "index": 0 }]
+      ]
+    },
+    "Get User Active Tasks": {
+      "main": [[{ "node": "Has Tasks?", "type": "main", "index": 0 }]]
+    },
+    "Has Tasks?": {
+      "main": [
+        [{ "node": "AI Priority Analysis", "type": "main", "index": 0 }],
+        [{ "node": "Insufficient Tasks", "type": "main", "index": 0 }]
+      ]
+    },
+    "AI Priority Analysis": {
+      "main": [[{ "node": "AI Call Success?", "type": "main", "index": 0 }]]
+    },
+    "AI Call Success?": {
+      "main": [
+        [{ "node": "Parse AI Response", "type": "main", "index": 0 }],
+        [{ "node": "AI Call Failed", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [[{ "node": "Has Adjustments?", "type": "main", "index": 0 }]]
+    },
+    "Has Adjustments?": {
+      "main": [
+        [{ "node": "Apply Priority Updates", "type": "main", "index": 0 }],
+        [{ "node": "No Adjustments Needed", "type": "main", "index": 0 }]
+      ]
+    },
+    "Apply Priority Updates": {
+      "main": [[{ "node": "Execute Priority Updates", "type": "main", "index": 0 }]]
+    },
+    "Execute Priority Updates": {
+      "main": [[{ "node": "Notify User of Changes", "type": "main", "index": 0 }]]
+    },
+    "Notify User of Changes": {
+      "main": [[{ "node": "Log Rebalance Activity", "type": "main", "index": 0 }]]
+    },
+    "Log Rebalance Activity": {
+      "main": [[{ "node": "Success Response", "type": "main", "index": 0 }]]
+    },
+    "Catch Errors": {
+      "main": [[{ "node": "Log Error", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1", "errorWorkflow": "intentflow-automation-07" },
+  "versionId": "a7000000-0007-0007-0007-000000000100",
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "intentflow-automation-07",
+  "tags": [{ "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z", "id": "tag-advanced", "name": "advanced" }]
+}

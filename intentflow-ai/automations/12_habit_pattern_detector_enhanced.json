@@ -1,0 +1,342 @@
+{
+  "name": "12 - Habit Pattern Detector (Enhanced)",
+  "nodes": [
+    {
+      "id": "ac000000-0012-0012-0012-000000000001",
+      "name": "Weekly Sunday Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 20 * * 0" }]
+        }
+      }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000002",
+      "name": "Get Active Users",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [460, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, email, name, notification_settings, habit_detection_enabled FROM users WHERE created_at < CURRENT_DATE - INTERVAL '28 days' AND status = 'active' AND habit_detection_enabled = true;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000003",
+      "name": "Has Users?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "hasUsers",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000004",
+      "name": "Filter Users by Preference",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 220],
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst filtered = items.filter(item => {\n  let settings;\n  try {\n    settings = typeof item.json.notification_settings === 'string'\n      ? JSON.parse(item.json.notification_settings)\n      : item.json.notification_settings || {};\n  } catch (e) {\n    return true;\n  }\n  \n  return settings.habit_suggestions !== false;\n});\n\nif (filtered.length === 0) return [];\nreturn filtered;"
+      }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000005",
+      "name": "Loop Over Users",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1120, 220],
+      "parameters": { "batchSize": 1, "options": {} }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000006",
+      "name": "Query Task Patterns",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1340, 220],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  LOWER(title) AS normalized_title,\n  COUNT(*) AS occurrence_count,\n  MIN(created_at) AS first_seen,\n  MAX(created_at) AS last_seen,\n  ARRAY_AGG(DISTINCT EXTRACT(DOW FROM created_at)::int ORDER BY 1) AS days_of_week,\n  ARRAY_AGG(DISTINCT EXTRACT(HOUR FROM created_at::time)::int ORDER BY 1) AS hours_of_day,\n  ROUND(AVG(EXTRACT(HOUR FROM created_at::time))) AS avg_hour,\n  MODE() WITHIN GROUP (ORDER BY category) AS common_category\nFROM tasks\nWHERE user_id = '{{ $json.id }}'\n  AND created_at >= CURRENT_DATE - INTERVAL '28 days'\n  AND title NOT LIKE '%[Template]%'\nGROUP BY LOWER(title)\nHAVING COUNT(*) >= 3\nORDER BY occurrence_count DESC\nLIMIT 25;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000007",
+      "name": "Has Patterns?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1560, 220],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "hasPatterns",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000008",
+      "name": "AI Pattern Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 180],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENAI_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\n  \"model\": \"gpt-4\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a habit detection AI. Given recurring task patterns with days/hours, identify which could be converted to recurring templates. Day 0=Sunday, 1=Monday. Return ONLY JSON: {\\\"habits\\\": [{\\\"title\\\": \\\"template name\\\", \\\"frequency\\\": \\\"daily|weekly|weekdays|weekends\\\", \\\"suggested_days\\\": [0-6], \\\"suggested_hour\\\": 0-23, \\\"confidence\\\": 0-100, \\\"reason\\\": \\\"brief explanation\\\"}]}. Only suggest with confidence >= 70.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Patterns: {{ JSON.stringify($json) }}\"\n    }\n  ],\n  \"response_format\": { \"type\": \"json_object\" },\n  \"temperature\": 0.3\n}",
+        "options": { "timeout": 30000 }
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000009",
+      "name": "AI Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2000, 180],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "success",
+              "leftValue": "={{ $json.choices && $json.choices.length > 0 }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000010",
+      "name": "Parse Habits",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 140],
+      "parameters": {
+        "jsCode": "const content = $input.item.json.choices[0].message.content;\nlet parsed;\ntry {\n  parsed = typeof content === 'string' ? JSON.parse(content) : content;\n} catch (e) {\n  return [{ json: { habits: [], error: 'Parse failed' } }];\n}\n\n// Only suggest habits with >=70% confidence\nconst highConfidence = (parsed.habits || []).filter(h => h.confidence >= 70);\n\n// Limit to top 5 suggestions\nconst limited = highConfidence.slice(0, 5);\n\nreturn [{ json: { habits: limited, count: limited.length } }];"
+      }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000011",
+      "name": "Has Habits?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2440, 140],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "hasHabits",
+              "leftValue": "={{ $json.habits.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000012",
+      "name": "Store Habit Suggestions",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2660, 100],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO habit_suggestions (user_id, habits_json, suggested_at, status, ai_confidence_avg)\nVALUES (\n  '{{ $('Loop Over Users').item.json.id }}',\n  '{{ JSON.stringify($json.habits) }}'::jsonb,\n  NOW(),\n  'pending',\n  {{ $json.habits.reduce((sum, h) => sum + h.confidence, 0) / $json.habits.length }}\n)\nON CONFLICT (user_id, suggested_at::date)\nDO UPDATE SET\n  habits_json = EXCLUDED.habits_json,\n  status = 'pending',\n  ai_confidence_avg = EXCLUDED.ai_confidence_avg;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } },
+      "onError": "continue"
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000013",
+      "name": "Notify User",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2880, 100],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/notifications/send",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "user_id": "={{ $('Loop Over Users').item.json.id }}",
+          "message": "=🔄 We spotted {{ $('Parse Habits').item.json.count }} recurring habit{{ $('Parse Habits').item.json.count > 1 ? 's' : '' }} in your tasks! Want to turn them into automatic templates?",
+          "type": "habit_suggestion",
+          "action_url": "intentflow://habits/review",
+          "data": "={{ JSON.stringify({ count: $('Parse Habits').item.json.count, habits: $('Parse Habits').item.json.habits.map(h => h.title) }) }}"
+        },
+        "options": { "timeout": 10000 }
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000014",
+      "name": "Log Detection",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3100, 100],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_logs (workflow_id, run_date, tasks_processed, execution_status, created_at) VALUES ('intentflow-automation-12', CURRENT_DATE, {{ $('Parse Habits').item.json.count }}, 'success', NOW());"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } },
+      "onError": "continue"
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000015",
+      "name": "No Users — Stop",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [900, 380],
+      "parameters": {}
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000016",
+      "name": "No Patterns — Skip",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1780, 300],
+      "parameters": {}
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000017",
+      "name": "AI Failed — Skip",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2220, 260],
+      "parameters": {}
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000018",
+      "name": "No High Confidence Habits",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2660, 220],
+      "parameters": {}
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000019",
+      "name": "Catch Errors",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [900, 500],
+      "parameters": {}
+    },
+    {
+      "id": "ac000000-0012-0012-0012-000000000020",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1120, 500],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_errors (workflow_id, node_name, error_message, error_data, created_at) VALUES ('intentflow-automation-12', '{{ $json.errorNode }}', '{{ $json.errorMessage }}', '{{ JSON.stringify($json) }}', NOW());"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    }
+  ],
+  "connections": {
+    "Weekly Sunday Trigger": {
+      "main": [[{ "node": "Get Active Users", "type": "main", "index": 0 }]]
+    },
+    "Get Active Users": {
+      "main": [[{ "node": "Has Users?", "type": "main", "index": 0 }]]
+    },
+    "Has Users?": {
+      "main": [
+        [{ "node": "Filter Users by Preference", "type": "main", "index": 0 }],
+        [{ "node": "No Users — Stop", "type": "main", "index": 0 }]
+      ]
+    },
+    "Filter Users by Preference": {
+      "main": [[{ "node": "Loop Over Users", "type": "main", "index": 0 }]]
+    },
+    "Loop Over Users": {
+      "main": [[{ "node": "Query Task Patterns", "type": "main", "index": 0 }]]
+    },
+    "Query Task Patterns": {
+      "main": [[{ "node": "Has Patterns?", "type": "main", "index": 0 }]]
+    },
+    "Has Patterns?": {
+      "main": [
+        [{ "node": "AI Pattern Analysis", "type": "main", "index": 0 }],
+        [{ "node": "No Patterns — Skip", "type": "main", "index": 0 }]
+      ]
+    },
+    "AI Pattern Analysis": {
+      "main": [[{ "node": "AI Success?", "type": "main", "index": 0 }]]
+    },
+    "AI Success?": {
+      "main": [
+        [{ "node": "Parse Habits", "type": "main", "index": 0 }],
+        [{ "node": "AI Failed — Skip", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse Habits": {
+      "main": [[{ "node": "Has Habits?", "type": "main", "index": 0 }]]
+    },
+    "Has Habits?": {
+      "main": [
+        [{ "node": "Store Habit Suggestions", "type": "main", "index": 0 }],
+        [{ "node": "No High Confidence Habits", "type": "main", "index": 0 }]
+      ]
+    },
+    "Store Habit Suggestions": {
+      "main": [[{ "node": "Notify User", "type": "main", "index": 0 }]]
+    },
+    "Notify User": {
+      "main": [[{ "node": "Log Detection", "type": "main", "index": 0 }]]
+    },
+    "Log Detection": {
+      "main": [[{ "node": "Loop Over Users", "type": "main", "index": 0 }]]
+    },
+    "Catch Errors": {
+      "main": [[{ "node": "Log Error", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1", "errorWorkflow": "intentflow-automation-12" },
+  "versionId": "ac000000-0012-0012-0012-000000000100",
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "intentflow-automation-12",
+  "tags": [{ "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z", "id": "tag-advanced", "name": "advanced" }]
+}

@@ -12,12 +12,27 @@ async function getOne(taskId, userId) {
   return task;
 }
 
+const PRIORITY_MAP = {
+  urgent: 'high',
+  regular: 'medium',
+  normal: 'medium',
+  critical: 'high',
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+};
+
+function normalizePriority(p) {
+  if (!p) return 'medium';
+  return PRIORITY_MAP[p.toLowerCase()] || 'medium';
+}
+
 async function create(taskData, userId) {
   return taskRepository.create({
     ...taskData,
     user_id: userId,
-    status: taskData.status || 'pending_review',
-    priority: taskData.priority || 'medium'
+    status: taskData.status || 'pending',
+    priority: normalizePriority(taskData.priority),
   });
 }
 
@@ -61,8 +76,8 @@ async function bulkCreate(tasksArray, userId) {
   const items = tasksArray.map(t => ({
     ...t,
     user_id: userId,
-    status: t.status || 'pending_review',
-    priority: t.priority || 'medium'
+    status: t.status || 'pending',
+    priority: normalizePriority(t.priority),
   }));
   return taskRepository.bulkCreate(items);
 }

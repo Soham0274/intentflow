@@ -15,10 +15,16 @@ const app = express();
 
 app.use(helmet());
 
+const DEV_ORIGINS = [
+  'http://localhost:3000',  // Next.js web PWA
+  'http://localhost:8081',  // Expo mobile (metro)
+  'http://localhost:19006', // Expo web fallback
+];
+
 app.use(cors({
-  origin: config.NODE_ENV === 'production' 
+  origin: config.NODE_ENV === 'production'
     ? [config.APP.FRONTEND_URL]
-    : true,
+    : (origin, cb) => cb(null, DEV_ORIGINS.includes(origin) || !origin),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID']

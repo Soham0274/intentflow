@@ -1,0 +1,379 @@
+{
+  "name": "09 - Context-Aware Scheduling (Enhanced)",
+  "nodes": [
+    {
+      "id": "a9000000-0009-0009-0009-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "schedule-tasks",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000002",
+      "name": "Validate Required Fields",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "userReq",
+              "leftValue": "={{ $json.body.user_id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000003",
+      "name": "Get Unscheduled Tasks",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 280],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, title, priority, category, estimated_minutes, description\nFROM tasks\nWHERE user_id  = '{{ $json.body.user_id }}'\n  AND status   = 'active'\n  AND due_time IS NULL\n  AND due_date >= CURRENT_DATE\n  AND (ai_scheduling_attempts IS NULL OR ai_scheduling_attempts < 3)\nORDER BY priority DESC, due_date ASC NULLS LAST\nLIMIT 20;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000004",
+      "name": "Has Tasks to Schedule?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 280],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "hasTasks",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 1,
+              "operator": { "type": "number", "operation": "gte" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000005",
+      "name": "Fetch User Preferences",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1120, 240],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT timezone, work_hours_start, work_hours_end, preferred_focus_blocks, calendar_sync_enabled FROM users WHERE id = '{{ $('Webhook Trigger').item.json.body.user_id }}' LIMIT 1;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000006",
+      "name": "Fetch Upcoming Calendar Events",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [1340, 240],
+      "parameters": {
+        "operation": "getAll",
+        "calendar": { "__rl": true, "value": "primary", "mode": "id" },
+        "returnAll": false,
+        "limit": 50,
+        "options": {
+          "timeMin": "={{ new Date().toISOString() }}",
+          "timeMax": "={{ new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() }}",
+          "singleEvents": true,
+          "orderBy": "startTime"
+        }
+      },
+      "credentials": { "googleCalendarOAuth2Api": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "Google Calendar" } },
+      "onError": "continue"
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000007",
+      "name": "AI Scheduling Suggestions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 240],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENAI_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\n  \"model\": \"gpt-4\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a scheduling AI. Given unscheduled tasks and calendar events, suggest optimal time slots. Rules: schedule deep work (work/urgent) in morning (9am-12pm), admin tasks in afternoon (2pm-5pm), avoid conflicts with calendar events, allow 15min buffers. Return ONLY JSON: {\\\"suggestions\\\": [{\\\"task_id\\\": \\\"uuid\\\", \\\"suggested_date\\\": \\\"YYYY-MM-DD\\\", \\\"suggested_time\\\": \\\"HH:MM\\\", \\\"reason\\\": \\\"brief reason\\\", \\\"confidence\\\": 0-100}]}.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Tasks: {{ JSON.stringify($('Get Unscheduled Tasks').all().map(i => i.json)) }}\\nEvents: {{ JSON.stringify($('Fetch Upcoming Calendar Events').all().map(i => ({ start: i.json.start, end: i.json.end, summary: i.json.summary }))) }}\\nUser work hours: {{ JSON.stringify($('Fetch User Preferences').item.json) }}\"\n    }\n  ],\n  \"response_format\": { \"type\": \"json_object\" },\n  \"temperature\": 0.3\n}",
+        "options": { "timeout": 30000 }
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000008",
+      "name": "AI Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 240],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "success",
+              "leftValue": "={{ $json.choices && $json.choices.length > 0 }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000009",
+      "name": "Parse Suggestions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 200],
+      "parameters": {
+        "jsCode": "const content = $input.item.json.choices[0].message.content;\nlet parsed;\ntry {\n  parsed = typeof content === 'string' ? JSON.parse(content) : content;\n} catch (e) {\n  return [{ json: { suggestions: [], error: 'Parse failed' } }];\n}\n\n// Validate and filter high-confidence suggestions\nconst valid = (parsed.suggestions || []).filter(s => {\n  return s.task_id && s.suggested_date && s.suggested_time && s.confidence >= 60;\n});\n\nreturn [{ json: { suggestions: valid, count: valid.length } }];"
+      }
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000010",
+      "name": "Has Suggestions?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2220, 200],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "hasSugg",
+              "leftValue": "={{ $json.suggestions.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000011",
+      "name": "Send Suggestions to Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2440, 160],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/scheduling/suggestions",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "user_id": "={{ $('Webhook Trigger').item.json.body.user_id }}",
+          "suggestions": "={{ $json.suggestions }}",
+          "generated_at": "={{ new Date().toISOString() }}",
+          "ai_model": "gpt-4"
+        },
+        "options": { "timeout": 15000 }
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000012",
+      "name": "Notify User",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2660, 160],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/notifications/send",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "user_id": "={{ $('Webhook Trigger').item.json.body.user_id }}",
+          "message": "=📅 AI suggested optimal time slots for {{ $('Parse Suggestions').item.json.count }} tasks based on your calendar and work patterns.",
+          "type": "scheduling_suggestions",
+          "action_url": "intentflow://tasks/schedule-review",
+          "data": "={{ JSON.stringify({ count: $('Parse Suggestions').item.json.count }) }}"
+        },
+        "options": { "timeout": 10000 }
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000013",
+      "name": "Increment Scheduling Attempts",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2880, 160],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE tasks SET ai_scheduling_attempts = COALESCE(ai_scheduling_attempts, 0) + 1 WHERE user_id = '{{ $('Webhook Trigger').item.json.body.user_id }}' AND status = 'active' AND due_time IS NULL;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } },
+      "onError": "continue"
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000014",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [3100, 160],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"suggestions_generated\": {{ $('Parse Suggestions').item.json.count }}, \"message\": \"Scheduling suggestions generated successfully\"}",
+        "options": { "responseCode": 200 }
+      }
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000015",
+      "name": "No Suggestions Available",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2440, 280],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"suggestions_generated\": 0, \"message\": \"No high-confidence scheduling suggestions available at this time\"}",
+        "options": { "responseCode": 200 }
+      }
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000016",
+      "name": "AI Call Failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 340],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": false, \"error\": \"AI scheduling analysis failed\", \"code\": \"AI_ERROR\"}",
+        "options": { "responseCode": 503 }
+      }
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000017",
+      "name": "No Tasks Need Scheduling",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 380],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"suggestions_generated\": 0, \"message\": \"No unscheduled tasks found\"}",
+        "options": { "responseCode": 200 }
+      }
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000018",
+      "name": "Missing User ID",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [680, 460],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"error\": \"Missing required field: user_id\", \"code\": \"VALIDATION_ERROR\"}",
+        "options": { "responseCode": 400 }
+      }
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000019",
+      "name": "Catch Errors",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [680, 580],
+      "parameters": {}
+    },
+    {
+      "id": "a9000000-0009-0009-0009-000000000020",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [900, 580],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_errors (workflow_id, node_name, error_message, error_data, created_at) VALUES ('intentflow-automation-09', '{{ $json.errorNode }}', '{{ $json.errorMessage }}', '{{ JSON.stringify($json) }}', NOW());"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Validate Required Fields", "type": "main", "index": 0 }]]
+    },
+    "Validate Required Fields": {
+      "main": [
+        [{ "node": "Get Unscheduled Tasks", "type": "main", "index": 0 }],
+        [{ "node": "Missing User ID", "type": "main", "index": 0 }]
+      ]
+    },
+    "Get Unscheduled Tasks": {
+      "main": [[{ "node": "Has Tasks to Schedule?", "type": "main", "index": 0 }]]
+    },
+    "Has Tasks to Schedule?": {
+      "main": [
+        [{ "node": "Fetch User Preferences", "type": "main", "index": 0 }],
+        [{ "node": "No Tasks Need Scheduling", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch User Preferences": {
+      "main": [[{ "node": "Fetch Upcoming Calendar Events", "type": "main", "index": 0 }]]
+    },
+    "Fetch Upcoming Calendar Events": {
+      "main": [[{ "node": "AI Scheduling Suggestions", "type": "main", "index": 0 }]]
+    },
+    "AI Scheduling Suggestions": {
+      "main": [[{ "node": "AI Success?", "type": "main", "index": 0 }]]
+    },
+    "AI Success?": {
+      "main": [
+        [{ "node": "Parse Suggestions", "type": "main", "index": 0 }],
+        [{ "node": "AI Call Failed", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse Suggestions": {
+      "main": [[{ "node": "Has Suggestions?", "type": "main", "index": 0 }]]
+    },
+    "Has Suggestions?": {
+      "main": [
+        [{ "node": "Send Suggestions to Backend", "type": "main", "index": 0 }],
+        [{ "node": "No Suggestions Available", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send Suggestions to Backend": {
+      "main": [[{ "node": "Notify User", "type": "main", "index": 0 }]]
+    },
+    "Notify User": {
+      "main": [[{ "node": "Increment Scheduling Attempts", "type": "main", "index": 0 }]]
+    },
+    "Increment Scheduling Attempts": {
+      "main": [[{ "node": "Success Response", "type": "main", "index": 0 }]]
+    },
+    "Catch Errors": {
+      "main": [[{ "node": "Log Error", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1", "errorWorkflow": "intentflow-automation-09" },
+  "versionId": "a9000000-0009-0009-0009-000000000100",
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "intentflow-automation-09",
+  "tags": [{ "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z", "id": "tag-advanced", "name": "advanced" }]
+}

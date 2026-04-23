@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     flex: 1,
-    fontFamily: Fonts.semiBold,
+    fontFamily: Fonts.bold,
     fontSize: 16,
     color: Colors.textPrimary,
   },
@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   infoValue: {
-    fontFamily: Fonts.semiBold,
+    fontFamily: Fonts.bold,
     fontSize: 15,
     color: Colors.textPrimary,
   },

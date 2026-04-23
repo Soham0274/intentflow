@@ -1,0 +1,345 @@
+{
+  "name": "10 - Task Dependency Resolver (Enhanced)",
+  "nodes": [
+    {
+      "id": "aa000000-0010-0010-0010-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "resolve-dependencies",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000002",
+      "name": "Validate Required Fields",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "userReq",
+              "leftValue": "={{ $json.body.user_id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000003",
+      "name": "Get All Active Tasks",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 280],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  id,\n  title,\n  description,\n  due_date,\n  priority,\n  status,\n  category,\n  COALESCE(dependency_scan_count, 0) as scan_count\nFROM tasks\nWHERE user_id = '{{ $json.body.user_id }}'\n  AND status IN ('active', 'pending')\n  AND (dependency_scan_count IS NULL OR dependency_scan_count < 5)\nORDER BY created_at DESC\nLIMIT 100;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000004",
+      "name": "Has Enough Tasks?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 280],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "minTasks",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 2,
+              "operator": { "type": "number", "operation": "gte" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000005",
+      "name": "AI Dependency Detection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 240],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENAI_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\n  \"model\": \"gpt-4\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a dependency detection AI. Analyze task list and identify which tasks depend on or block others. Look for: 'before', 'after', 'once X is done', 'following', 'dependent on', 'blocked by', 'prerequisite'. Return ONLY JSON: {\\\"dependencies\\\": [{\\\"task_id\\\": \\\"uuid of blocked task\\\", \\\"blocked_by_task_id\\\": \\\"uuid of blocking task\\\", \\\"reason\\\": \\\"brief explanation\\\", \\\"confidence\\\": 0-100}]}. Only include pairs where confidence >= 70.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Tasks: {{ JSON.stringify($json.map(t => ({ id: t.id, title: t.title, description: t.description, status: t.status }))) }}\"\n    }\n  ],\n  \"response_format\": { \"type\": \"json_object\" },\n  \"temperature\": 0.2\n}",
+        "options": { "timeout": 30000 }
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000006",
+      "name": "AI Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 240],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "success",
+              "leftValue": "={{ $json.choices && $json.choices.length > 0 }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000007",
+      "name": "Parse Dependencies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 200],
+      "parameters": {
+        "jsCode": "const content = $input.item.json.choices[0].message.content;\nlet parsed;\ntry {\n  parsed = typeof content === 'string' ? JSON.parse(content) : content;\n} catch (e) {\n  return [{ json: { dependencies: [], error: 'Parse failed' } }];\n}\n\n// Filter high-confidence dependencies\nconst deps = (parsed.dependencies || []).filter(d => d.confidence >= 70);\n\n// Validate task IDs exist in our list\nconst validTaskIds = $('Get All Active Tasks').all().map(i => i.json.id);\nconst valid = deps.filter(d =>\n  validTaskIds.includes(d.task_id) &&\n  validTaskIds.includes(d.blocked_by_task_id) &&\n  d.task_id !== d.blocked_by_task_id\n);\n\nreturn [{ json: { dependencies: valid, count: valid.length } }];"
+      }
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000008",
+      "name": "Has Dependencies?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 200],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "hasDeps",
+              "leftValue": "={{ $json.dependencies.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000009",
+      "name": "Write Dependencies to DB",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 160],
+      "parameters": {
+        "jsCode": "const deps = $input.item.json.dependencies;\nconst userId = $('Webhook Trigger').item.json.body.user_id;\n\nconst statements = deps.map(d =>\n  `UPDATE tasks SET blocked_by_task_id = '${d.blocked_by_task_id}', status = 'pending', dependency_reason = '${d.reason.replace(/'/g, \"''\")}' WHERE id = '${d.task_id}' AND user_id = '${userId}' AND blocked_by_task_id IS NULL;`\n).join('\\n');\n\nreturn [{ json: { sql: statements, count: deps.length, dependencies: deps } }];"
+      }
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000010",
+      "name": "Execute DB Updates",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2220, 160],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } },
+      "onError": "continue"
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000011",
+      "name": "Notify User",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2440, 160],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/notifications/send",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "user_id": "={{ $('Webhook Trigger').item.json.body.user_id }}",
+          "message": "=🔗 AI detected {{ $('Write Dependencies to DB').item.json.count }} task dependencies. {{ $('Write Dependencies to DB').item.json.count }} tasks updated with blockers.",
+          "type": "dependencies_resolved",
+          "action_url": "intentflow://tasks/dependencies",
+          "data": "={{ JSON.stringify({ count: $('Write Dependencies to DB').item.json.count }) }}"
+        },
+        "options": { "timeout": 10000 }
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000012",
+      "name": "Increment Scan Counter",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2660, 160],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE tasks SET dependency_scan_count = COALESCE(dependency_scan_count, 0) + 1 WHERE user_id = '{{ $('Webhook Trigger').item.json.body.user_id }}' AND status IN ('active', 'pending');"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } },
+      "onError": "continue"
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000013",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2880, 160],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"dependencies_found\": {{ $('Write Dependencies to DB').item.json.count || 0 }}, \"tasks_updated\": {{ $('Write Dependencies to DB').item.json.count || 0 }}}",
+        "options": { "responseCode": 200 }
+      }
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000014",
+      "name": "No Dependencies Found",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 280],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"dependencies_found\": 0, \"message\": \"No task dependencies detected\"}",
+        "options": { "responseCode": 200 }
+      }
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000015",
+      "name": "AI Analysis Failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1560, 360],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": false, \"error\": \"AI dependency detection failed\", \"code\": \"AI_ERROR\"}",
+        "options": { "responseCode": 503 }
+      }
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000016",
+      "name": "Insufficient Tasks",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 400],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": false, \"error\": \"At least 2 active tasks required for dependency detection\", \"code\": \"INSUFFICIENT_TASKS\"}",
+        "options": { "responseCode": 400 }
+      }
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000017",
+      "name": "Missing User ID",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [680, 460],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"error\": \"Missing required field: user_id\", \"code\": \"VALIDATION_ERROR\"}",
+        "options": { "responseCode": 400 }
+      }
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000018",
+      "name": "Catch Errors",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [680, 580],
+      "parameters": {}
+    },
+    {
+      "id": "aa000000-0010-0010-0010-000000000019",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [900, 580],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_errors (workflow_id, node_name, error_message, error_data, created_at) VALUES ('intentflow-automation-10', '{{ $json.errorNode }}', '{{ $json.errorMessage }}', '{{ JSON.stringify($json) }}', NOW());"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Validate Required Fields", "type": "main", "index": 0 }]]
+    },
+    "Validate Required Fields": {
+      "main": [
+        [{ "node": "Get All Active Tasks", "type": "main", "index": 0 }],
+        [{ "node": "Missing User ID", "type": "main", "index": 0 }]
+      ]
+    },
+    "Get All Active Tasks": {
+      "main": [[{ "node": "Has Enough Tasks?", "type": "main", "index": 0 }]]
+    },
+    "Has Enough Tasks?": {
+      "main": [
+        [{ "node": "AI Dependency Detection", "type": "main", "index": 0 }],
+        [{ "node": "Insufficient Tasks", "type": "main", "index": 0 }]
+      ]
+    },
+    "AI Dependency Detection": {
+      "main": [[{ "node": "AI Success?", "type": "main", "index": 0 }]]
+    },
+    "AI Success?": {
+      "main": [
+        [{ "node": "Parse Dependencies", "type": "main", "index": 0 }],
+        [{ "node": "AI Analysis Failed", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse Dependencies": {
+      "main": [[{ "node": "Has Dependencies?", "type": "main", "index": 0 }]]
+    },
+    "Has Dependencies?": {
+      "main": [
+        [{ "node": "Write Dependencies to DB", "type": "main", "index": 0 }],
+        [{ "node": "No Dependencies Found", "type": "main", "index": 0 }]
+      ]
+    },
+    "Write Dependencies to DB": {
+      "main": [[{ "node": "Execute DB Updates", "type": "main", "index": 0 }]]
+    },
+    "Execute DB Updates": {
+      "main": [[{ "node": "Notify User", "type": "main", "index": 0 }]]
+    },
+    "Notify User": {
+      "main": [[{ "node": "Increment Scan Counter", "type": "main", "index": 0 }]]
+    },
+    "Increment Scan Counter": {
+      "main": [[{ "node": "Success Response", "type": "main", "index": 0 }]]
+    },
+    "Catch Errors": {
+      "main": [[{ "node": "Log Error", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1", "errorWorkflow": "intentflow-automation-10" },
+  "versionId": "aa000000-0010-0010-0010-000000000100",
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "intentflow-automation-10",
+  "tags": [{ "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z", "id": "tag-advanced", "name": "advanced" }]
+}

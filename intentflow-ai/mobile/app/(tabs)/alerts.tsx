@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 17,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "DMSans_500Medium",
   },
   scroll: {
     paddingHorizontal: 20,
@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     fontSize: 11,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "DMSans_500Medium",
     letterSpacing: 1.5,
     marginBottom: -10,
   },
@@ -215,16 +215,16 @@ const styles = StyleSheet.create({
   },
   nudgeName: {
     fontSize: 16,
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Syne_700Bold",
   },
   nudgeSub: {
     fontSize: 12,
-    fontFamily: "Inter_400Regular",
+    fontFamily: "DMSans_400Regular",
     marginTop: 2,
   },
   nudgeDesc: {
     fontSize: 13,
-    fontFamily: "Inter_400Regular",
+    fontFamily: "DMSans_400Regular",
     lineHeight: 20,
   },
   togglePill: {
@@ -268,13 +268,13 @@ const styles = StyleSheet.create({
   },
   timeText: {
     fontSize: 15,
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Syne_700Bold",
     textAlign: "center",
     lineHeight: 20,
   },
   toText: {
     fontSize: 13,
-    fontFamily: "Inter_500Medium",
+    fontFamily: "DMSans_500Medium",
   },
   divider: {
     height: 1,
@@ -297,14 +297,14 @@ const styles = StyleSheet.create({
   ruleLabel: {
     flex: 1,
     fontSize: 15,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "DMSans_500Medium",
   },
   ruleMeta: {
     flex: 1,
   },
   ruleSub: {
     fontSize: 12,
-    fontFamily: "Inter_400Regular",
+    fontFamily: "DMSans_400Regular",
     marginTop: 2,
   },
   ruleRight: {
@@ -314,6 +314,6 @@ const styles = StyleSheet.create({
   },
   ruleValue: {
     fontSize: 14,
-    fontFamily: "Inter_500Medium",
+    fontFamily: "DMSans_500Medium",
   },
 });

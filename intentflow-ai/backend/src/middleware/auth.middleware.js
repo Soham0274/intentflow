@@ -2,10 +2,6 @@ const supabase = require('../utils/supabaseClient');
 const userRepository = require('../repositories/user.repository');
 const { ApiError } = require('../utils/ApiError');
 
-// Simple in-memory cache to avoid repeated DB hits on every request
-const userCache = new Map();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
 const requireAuth = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -18,21 +14,20 @@ const requireAuth = async (req, res, next) => {
       throw new ApiError(401, 'Missing Bearer token');
     }
 
+    // Always fetch and verify user via the Supabase Auth server.
+    // Using getUser instead of getSession ensures the JWT is valid and hasn't been revoked.
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
     if (error || !user) {
       throw new ApiError(401, 'Unauthorized or expired token');
     }
 
-    // Cache user for 5 minutes to avoid repeated DB hits
-    const cached = userCache.get(user.id);
-    if (cached && (Date.now() - cached.ts < CACHE_TTL_MS)) {
-      req.user = cached.data;
-    } else {
-      const localUser = await userRepository.findOrCreate(user.id, user);
-      userCache.set(user.id, { data: localUser, ts: Date.now() });
-      req.user = localUser;
-    }
+    // Fetch the correct db row strictly for this active auth user
+    // No global mapping to prevent data cross-contamination
+    const localUser = await userRepository.findOrCreate(user.id, user);
+    
+    // Explicitly scope the authenticated user to this single request
+    req.user = localUser;
 
     next();
   } catch (err) {

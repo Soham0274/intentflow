@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   Platform,
   ScrollView,
@@ -16,6 +16,7 @@ import { useColors } from "@/hooks/useColors";
 import { GradientBackground } from "@/components/GradientBackground";
 import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/store/AuthContext";
+import { fetchRecentIntents } from "@/services/api";
 
 function SectionLabel({ text }: { text: string }) {
   const colors = useColors();
@@ -29,6 +30,14 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { voiceSensitivity, setVoiceSensitivity, autoConfirm, setAutoConfirm, logout, tasks } = useApp();
   const { signOut, user } = useAuth();
+  const [recentIntents, setRecentIntents] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetchRecentIntents().then(res => {
+      const data = Array.isArray(res.data) ? res.data : (Array.isArray(res) ? res : []);
+      setRecentIntents(data.slice(0, 3));
+    }).catch(err => console.error("Failed to load recent intents:", err));
+  }, []);
 
   // Get real user data from AuthContext/Supabase
   const userEmail = user?.email || "";
@@ -154,32 +163,19 @@ export default function ProfileScreen() {
               <Text style={[styles.activeBadgeText, { color: colors.intentSuccess }]}>ACTIVE</Text>
             </View>
           </View>
-
-          <View style={styles.ecoRow}>
-            <View style={[styles.ecoIcon, { backgroundColor: colors.muted }]}>
-              <Feather name="calendar" size={16} color={colors.mutedForeground} />
-            </View>
-            <View style={styles.ecoInfo}>
-              <Text style={[styles.ecoName, { color: colors.foreground }]}>Outlook Calendar</Text>
-              <Text style={[styles.ecoSub, { color: colors.mutedForeground }]}>Not connected</Text>
-            </View>
-            <TouchableOpacity>
-              <Text style={[styles.connectText, { color: colors.primary }]}>Connect</Text>
-            </TouchableOpacity>
-          </View>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(280)}>
           <View style={styles.recentsHeader}>
             <SectionLabel text="RECENT INTENTS" />
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push("/(tabs)/intents")}>
               <Text style={[styles.viewAllText, { color: colors.primary }]}>View All</Text>
             </TouchableOpacity>
           </View>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(320)} style={[styles.recentCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          {tasks.slice(0, 2).map((task, i) => (
+          {recentIntents.map((task, i) => (
             <View
               key={task.id}
               style={[
@@ -188,10 +184,15 @@ export default function ProfileScreen() {
               ]}
             >
               <Text style={[styles.recentText, { color: colors.mutedForeground }]}>
-                "{task.action} with {task.entity}"
+                "{task.action || task.title} {task.entity ? `with ${task.entity}` : ''}"
               </Text>
             </View>
           ))}
+          {recentIntents.length === 0 && (
+             <View style={styles.recentRow}>
+               <Text style={[styles.recentText, { color: colors.mutedForeground }]}>No recent intents found.</Text>
+             </View>
+          )}
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(380)}>
@@ -227,7 +228,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 17,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "DMSans_500Medium",
   },
   scroll: {
     paddingHorizontal: 20,
@@ -258,7 +259,7 @@ const styles = StyleSheet.create({
   avatarText: {
     color: "#fff",
     fontSize: 32,
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Syne_700Bold",
   },
   avatarDot: {
     position: "absolute",
@@ -272,15 +273,15 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 20,
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Syne_700Bold",
   },
   userEmail: {
     fontSize: 13,
-    fontFamily: "Inter_400Regular",
+    fontFamily: "DMSans_400Regular",
   },
   sectionLabel: {
     fontSize: 11,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "DMSans_500Medium",
     letterSpacing: 1.5,
   },
   prefsCard: {
@@ -308,7 +309,7 @@ const styles = StyleSheet.create({
   },
   prefLabel: {
     fontSize: 15,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "DMSans_500Medium",
   },
   sensBtn: {
     paddingHorizontal: 10,
@@ -318,7 +319,7 @@ const styles = StyleSheet.create({
   },
   sensText: {
     fontSize: 13,
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Syne_700Bold",
   },
   togglePill: {
     width: 44,
@@ -356,18 +357,18 @@ const styles = StyleSheet.create({
   },
   ecoLetter: {
     fontSize: 18,
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Syne_700Bold",
   },
   ecoInfo: {
     flex: 1,
   },
   ecoName: {
     fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "DMSans_500Medium",
   },
   ecoSub: {
     fontSize: 12,
-    fontFamily: "Inter_400Regular",
+    fontFamily: "DMSans_400Regular",
     marginTop: 2,
   },
   activeBadge: {
@@ -377,12 +378,12 @@ const styles = StyleSheet.create({
   },
   activeBadgeText: {
     fontSize: 11,
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Syne_700Bold",
     letterSpacing: 0.5,
   },
   connectText: {
     fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "DMSans_500Medium",
   },
   recentsHeader: {
     flexDirection: "row",
@@ -391,7 +392,7 @@ const styles = StyleSheet.create({
   },
   viewAllText: {
     fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "DMSans_500Medium",
   },
   recentCard: {
     borderRadius: 16,
@@ -404,7 +405,7 @@ const styles = StyleSheet.create({
   },
   recentText: {
     fontSize: 13,
-    fontFamily: "Inter_400Regular",
+    fontFamily: "DMSans_400Regular",
     fontStyle: "italic",
   },
   logoutBtn: {
@@ -419,6 +420,6 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     fontSize: 15,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "DMSans_500Medium",
   },
 });

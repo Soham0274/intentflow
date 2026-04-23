@@ -1,0 +1,280 @@
+{
+  "name": "11 - Focus Mode Optimizer (Enhanced)",
+  "nodes": [
+    {
+      "id": "ab000000-0011-0011-0011-000000000001",
+      "name": "Daily 7 AM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 7 * * *" }]
+        }
+      }
+    },
+    {
+      "id": "ab000000-0011-0011-0011-000000000002",
+      "name": "Get All Active Users",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [460, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, name, email, timezone, focus_mode_enabled, notification_settings FROM users WHERE created_at < CURRENT_DATE - INTERVAL '1 day' AND status = 'active' AND focus_mode_enabled = true;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "ab000000-0011-0011-0011-000000000003",
+      "name": "Has Users?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "hasUsers",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ab000000-0011-0011-0011-000000000004",
+      "name": "Filter Users with Focus Enabled",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 220],
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst filtered = items.filter(item => {\n  let settings;\n  try {\n    settings = typeof item.json.notification_settings === 'string'\n      ? JSON.parse(item.json.notification_settings)\n      : item.json.notification_settings || {};\n  } catch (e) {\n    return true;\n  }\n  \n  return settings.focus_mode !== false;\n});\n\nif (filtered.length === 0) return [];\nreturn filtered;"
+      }
+    },
+    {
+      "id": "ab000000-0011-0011-0011-000000000005",
+      "name": "Has Users After Filter?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 220],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "hasFiltered",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ab000000-0011-0011-0011-000000000006",
+      "name": "Loop Over Users",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1340, 160],
+      "parameters": { "batchSize": 1, "options": {} }
+    },
+    {
+      "id": "ab000000-0011-0011-0011-000000000007",
+      "name": "Get Today's Tasks",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1560, 160],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  id,\n  title,\n  priority,\n  category,\n  due_date,\n  due_time,\n  estimated_minutes,\n  description,\n  focus_score,\n  CASE\n    WHEN priority = 'high'   THEN 3\n    WHEN priority = 'medium' THEN 2\n    ELSE 1\n  END AS priority_score,\n  CASE\n    WHEN due_date = CURRENT_DATE THEN 10\n    WHEN due_date = CURRENT_DATE + 1 THEN 5\n    WHEN due_date IS NULL THEN 0\n    ELSE GREATEST(0, 3 - (due_date - CURRENT_DATE))\n  END AS urgency_score\nFROM tasks\nWHERE user_id = '{{ $json.id }}'\n  AND status   = 'active'\n  AND (due_date IS NULL OR due_date >= CURRENT_DATE)\n  AND (category IN ('work', 'deep_work', 'creative') OR priority = 'high')\nORDER BY (priority_score * 2 + urgency_score) DESC, estimated_minutes ASC\nLIMIT 20;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "ab000000-0011-0011-0011-000000000008",
+      "name": "Has Tasks?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 160],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "hasTasks",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ab000000-0011-0011-0011-000000000009",
+      "name": "Pick Top 3 Focus Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 120],
+      "parameters": {
+        "jsCode": "const tasks = $input.all().map(i => i.json);\nif (tasks.length === 0) return [];\n\n// Score tasks by priority, urgency, and estimated time\nconst scored = tasks.map(t => ({\n  ...t,\n  focus_score: (t.priority_score * 3) + t.urgency_score - (t.estimated_minutes > 120 ? 2 : 0)\n}));\n\n// Sort and pick top 3\nscored.sort((a, b) => b.focus_score - a.focus_score);\nconst top3 = scored.slice(0, 3);\nconst userId = $('Loop Over Users').item.json.id;\nconst totalMinutes = top3.reduce((sum, t) => sum + (t.estimated_minutes || 30), 0);\n\nreturn [{\n  json: {\n    user_id: userId,\n    focus_tasks: top3.map((t, idx) => ({\n      rank:     idx + 1,\n      task_id:  t.id,\n      title:    t.title,\n      priority: t.priority,\n      due_date: t.due_date,\n      estimated_minutes: t.estimated_minutes || 30,\n      category: t.category\n    })),\n    total_focus_time: totalMinutes,\n    task_count: top3.length\n  }\n}];"
+      }
+    },
+    {
+      "id": "ab000000-0011-0011-0011-000000000010",
+      "name": "Save Focus List to DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2220, 120],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO user_focus_lists (user_id, focus_date, task_ids, focus_duration_minutes, created_at)\nVALUES (\n  '{{ $json.user_id }}',\n  CURRENT_DATE,\n  '{{ JSON.stringify($json.focus_tasks.map(t => t.task_id)) }}'::jsonb,\n  {{ $json.total_focus_time }},\n  NOW()\n)\nON CONFLICT (user_id, focus_date)\nDO UPDATE SET\n  task_ids   = EXCLUDED.task_ids,\n  focus_duration_minutes = EXCLUDED.focus_duration_minutes,\n  updated_at = NOW();"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } },
+      "onError": "continue"
+    },
+    {
+      "id": "ab000000-0011-0011-0011-000000000011",
+      "name": "Send Focus Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2440, 120],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/notifications/send",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "user_id": "={{ $('Pick Top 3 Focus Tasks').item.json.user_id }}",
+          "message": "=🎯 Your Focus Mode is ready! Top {{ $('Pick Top 3 Focus Tasks').item.json.task_count }} tasks for today ({{ Math.round($('Pick Top 3 Focus Tasks').item.json.total_focus_time / 60) }}h {{ $('Pick Top 3 Focus Tasks').item.json.total_focus_time % 60 }}m): {{ $('Pick Top 3 Focus Tasks').item.json.focus_tasks.map(t => t.title).join(', ') }}",
+          "type": "focus_mode",
+          "action_url": "intentflow://focus",
+          "data": "={{ JSON.stringify({ task_count: $('Pick Top 3 Focus Tasks').item.json.task_count, total_time: $('Pick Top 3 Focus Tasks').item.json.total_focus_time, tasks: $('Pick Top 3 Focus Tasks').item.json.focus_tasks }) }}"
+        },
+        "options": { "timeout": 10000 }
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "ab000000-0011-0011-0011-000000000012",
+      "name": "Log Focus List Created",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2660, 120],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_logs (workflow_id, run_date, tasks_processed, execution_status, created_at) VALUES ('intentflow-automation-11', CURRENT_DATE, {{ $('Pick Top 3 Focus Tasks').item.json.task_count }}, 'success', NOW());"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } },
+      "onError": "continue"
+    },
+    {
+      "id": "ab000000-0011-0011-0011-000000000013",
+      "name": "No Users — Stop",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [900, 380],
+      "parameters": {}
+    },
+    {
+      "id": "ab000000-0011-0011-0011-000000000014",
+      "name": "No Focus Users — Stop",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1340, 340],
+      "parameters": {}
+    },
+    {
+      "id": "ab000000-0011-0011-0011-000000000015",
+      "name": "No Tasks for User",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2000, 240],
+      "parameters": {}
+    },
+    {
+      "id": "ab000000-0011-0011-0011-000000000016",
+      "name": "Catch Errors",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [900, 500],
+      "parameters": {}
+    },
+    {
+      "id": "ab000000-0011-0011-0011-000000000017",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1120, 500],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_errors (workflow_id, node_name, error_message, error_data, created_at) VALUES ('intentflow-automation-11', '{{ $json.errorNode }}', '{{ $json.errorMessage }}', '{{ JSON.stringify($json) }}', NOW());"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    }
+  ],
+  "connections": {
+    "Daily 7 AM Trigger": {
+      "main": [[{ "node": "Get All Active Users", "type": "main", "index": 0 }]]
+    },
+    "Get All Active Users": {
+      "main": [[{ "node": "Has Users?", "type": "main", "index": 0 }]]
+    },
+    "Has Users?": {
+      "main": [
+        [{ "node": "Filter Users with Focus Enabled", "type": "main", "index": 0 }],
+        [{ "node": "No Users — Stop", "type": "main", "index": 0 }]
+      ]
+    },
+    "Filter Users with Focus Enabled": {
+      "main": [[{ "node": "Has Users After Filter?", "type": "main", "index": 0 }]]
+    },
+    "Has Users After Filter?": {
+      "main": [
+        [{ "node": "Loop Over Users", "type": "main", "index": 0 }],
+        [{ "node": "No Focus Users — Stop", "type": "main", "index": 0 }]
+      ]
+    },
+    "Loop Over Users": {
+      "main": [[{ "node": "Get Today's Tasks", "type": "main", "index": 0 }]]
+    },
+    "Get Today's Tasks": {
+      "main": [[{ "node": "Has Tasks?", "type": "main", "index": 0 }]]
+    },
+    "Has Tasks?": {
+      "main": [
+        [{ "node": "Pick Top 3 Focus Tasks", "type": "main", "index": 0 }],
+        [{ "node": "No Tasks for User", "type": "main", "index": 0 }]
+      ]
+    },
+    "Pick Top 3 Focus Tasks": {
+      "main": [[{ "node": "Save Focus List to DB", "type": "main", "index": 0 }]]
+    },
+    "Save Focus List to DB": {
+      "main": [[{ "node": "Send Focus Notification", "type": "main", "index": 0 }]]
+    },
+    "Send Focus Notification": {
+      "main": [[{ "node": "Log Focus List Created", "type": "main", "index": 0 }]]
+    },
+    "Log Focus List Created": {
+      "main": [[{ "node": "Loop Over Users", "type": "main", "index": 0 }]]
+    },
+    "Catch Errors": {
+      "main": [[{ "node": "Log Error", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1", "errorWorkflow": "intentflow-automation-11" },
+  "versionId": "ab000000-0011-0011-0011-000000000100",
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "intentflow-automation-11",
+  "tags": [{ "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z", "id": "tag-advanced", "name": "advanced" }]
+}

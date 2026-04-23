@@ -17,7 +17,7 @@ export interface Task {
   id: string;
   title: string;
   description?: string | null;
-  status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
+  status: 'pending' | 'active' | 'completed';
   priority: 'low' | 'medium' | 'high';
   due_date?: string | null;
   category?: string;
@@ -47,7 +47,7 @@ export function TaskEditor({ visible, task, onClose, onSave, onDelete }: TaskEdi
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [category, setCategory] = useState('work');
   const [dueDate, setDueDate] = useState('');
-  const [status, setStatus] = useState<'pending' | 'confirmed' | 'completed' | 'cancelled'>('pending');
+  const [status, setStatus] = useState<'pending' | 'active' | 'completed'>('pending');
 
   // Reset form when task changes
   useEffect(() => {
@@ -254,7 +254,7 @@ export function TaskEditor({ visible, task, onClose, onSave, onDelete }: TaskEdi
               <View style={styles.field}>
                 <Text style={[styles.label, { color: colors.mutedForeground }]}>Status</Text>
                 <View style={styles.optionsRow}>
-                  {['pending', 'confirmed', 'completed', 'cancelled'].map((s) => (
+                  {['pending', 'active', 'completed'].map((s) => (
                     <TouchableOpacity
                       key={s}
                       style={[
@@ -354,7 +354,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 20,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'Syne_700Bold',
   },
   closeBtn: {
     padding: 4,
@@ -367,7 +367,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'DMSans_500Medium',
     marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -378,7 +378,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 15,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'DMSans_400Regular',
   },
   textArea: {
     minHeight: 80,
@@ -397,7 +397,7 @@ const styles = StyleSheet.create({
   },
   optionText: {
     fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'DMSans_500Medium',
   },
   actions: {
     gap: 12,
@@ -411,7 +411,7 @@ const styles = StyleSheet.create({
   },
   saveBtnText: {
     fontSize: 16,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'Syne_700Bold',
   },
   deleteBtn: {
     height: 48,
@@ -424,7 +424,7 @@ const styles = StyleSheet.create({
   },
   deleteBtnText: {
     fontSize: 15,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'DMSans_500Medium',
   },
   cancelBtn: {
     height: 48,
@@ -435,6 +435,6 @@ const styles = StyleSheet.create({
   },
   cancelBtnText: {
     fontSize: 15,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'DMSans_500Medium',
   },
 });

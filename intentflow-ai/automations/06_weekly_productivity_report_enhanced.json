@@ -1,0 +1,188 @@
+{
+  "name": "06 - Weekly Productivity Report (Enhanced)",
+  "nodes": [
+    {
+      "id": "a6000000-0006-0006-0006-000000000001",
+      "name": "Monday 8 AM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 8 * * 1" }]
+        }
+      }
+    },
+    {
+      "id": "a6000000-0006-0006-0006-000000000002",
+      "name": "Get Active Users",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [460, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, email, name, notification_settings\nFROM users\nWHERE created_at < CURRENT_DATE - INTERVAL '7 days'\n  AND status = 'active'\nORDER BY created_at ASC;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a6000000-0006-0006-0006-000000000003",
+      "name": "Has Users?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "condUsers",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a6000000-0006-0006-0006-000000000003b",
+      "name": "Filter Users by Email Preference",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 220],
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst filtered = items.filter(item => {\n  let settings;\n  try {\n    settings = typeof item.json.notification_settings === 'string'\n      ? JSON.parse(item.json.notification_settings)\n      : item.json.notification_settings || {};\n  } catch (e) {\n    return true;\n  }\n  \n  return settings.weekly_reports !== false;\n});\n\nif (filtered.length === 0) return [];\nreturn filtered;"
+      }
+    },
+    {
+      "id": "a6000000-0006-0006-0006-000000000004",
+      "name": "Loop Over Users",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1120, 220],
+      "parameters": { "batchSize": 1, "options": {} }
+    },
+    {
+      "id": "a6000000-0006-0006-0006-000000000005",
+      "name": "Query Weekly Stats",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1340, 220],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH stats AS (\n  SELECT\n    COUNT(*) AS total_tasks,\n    COUNT(*) FILTER (WHERE status = 'completed') AS completed,\n    COUNT(*) FILTER (WHERE status = 'active') AS still_active,\n    COUNT(*) FILTER (WHERE status = 'completed'\n                      AND completed_at IS NOT NULL\n                      AND due_date IS NOT NULL\n                      AND completed_at::date <= due_date) AS on_time,\n    COUNT(*) FILTER (WHERE priority = 'high') AS high_priority,\n    ROUND(AVG(confidence_score)) AS avg_confidence,\n    COUNT(*) FILTER (WHERE status = 'completed' AND completed_at::date >= CURRENT_DATE - 7) AS completed_this_week,\n    COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE - 7) AS created_this_week\n  FROM tasks\n  WHERE user_id = '{{ $json.id }}'\n    AND created_at >= CURRENT_DATE - INTERVAL '30 days'\n),\nstreak AS (\n  SELECT MAX(streak_count) as best_streak\n  FROM user_streaks\n  WHERE user_id = '{{ $json.id }}'\n  AND streak_date >= CURRENT_DATE - INTERVAL '30 days'\n)\nSELECT\n  s.*,\n  COALESCE(st.best_streak, 0) as best_streak,\n  ROUND((s.on_time::numeric / NULLIF(s.completed, 0)) * 100) AS on_time_rate,\n  ROUND((s.completed::numeric / NULLIF(s.total_tasks, 0)) * 100) AS completion_rate,\n  CASE\n    WHEN s.completed_this_week >= 10 AND s.on_time_rate >= 80 THEN 'top_performer'\n    WHEN s.completed_this_week >= 5 THEN 'consistent'\n    WHEN s.completed_this_week > 0 THEN 'building_momentum'\n    ELSE 'needs_attention'\n  END AS productivity_level\nFROM stats s\nCROSS JOIN streak st;"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    },
+    {
+      "id": "a6000000-0006-0006-0006-000000000006",
+      "name": "Generate Insights",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 220],
+      "parameters": {
+        "jsCode": "const stats = $input.item.json;\nconst user = $('Loop Over Users').item.json;\n\nconst insights = [];\nconst recommendations = [];\n\n// Completion rate insights\nif (stats.completion_rate >= 85) {\n  insights.push(`🌟 Outstanding! ${stats.completion_rate}% completion rate this week.`);\n  recommendations.push('Keep up the excellent work! Consider mentoring others.');\n} else if (stats.completion_rate >= 60) {\n  insights.push(`👍 Good progress — ${stats.completion_rate}% of tasks completed.`);\n  recommendations.push('Try batching similar tasks to improve focus.');\n} else if (stats.total_tasks > 0) {\n  insights.push(`💪 ${stats.completion_rate}% completion rate. Room for improvement!`);\n  recommendations.push('Consider breaking large tasks into smaller, manageable chunks.');\n}\n\n// On-time rate\nif (stats.on_time_rate >= 90) {\n  insights.push(`⏰ Excellent punctuality — ${stats.on_time_rate}% on-time rate.`);\n} else if (stats.on_time_rate !== null && stats.on_time_rate < 70) {\n  insights.push(`📅 ${stats.on_time_rate}% on-time rate. Try padding your deadlines.`);\n  recommendations.push('Add 20-30% buffer time to your task estimates.');\n}\n\n// AI confidence\nif (stats.avg_confidence !== null && stats.avg_confidence < 75) {\n  insights.push('💭 Task descriptions could be more specific for better AI suggestions.');\n  recommendations.push('Include clear action verbs and context in your task titles.');\n}\n\n// Volume and streak\nif (stats.total_tasks === 0) {\n  insights.push('🚀 No tasks logged this week. Start capturing your to-dos!');\n  recommendations.push('Try the email-to-task feature to quickly capture tasks.');\n} else if (stats.completed_this_week >= 15) {\n  insights.push(`📈 High-volume week — ${stats.completed_this_week} tasks completed!`);\n}\n\nif (stats.best_streak >= 7) {\n  insights.push(`🔥 Impressive streak: ${stats.best_streak} days of consistent productivity!`);\n}\n\n// Productivity level badge\nconst badges = {\n  'top_performer': '🏆 Top Performer',\n  'consistent': '📊 Consistent Achiever',\n  'building_momentum': '📈 Building Momentum',\n  'needs_attention': '🎯 Focus Needed'\n};\n\nreturn [{\n  json: {\n    user_id: user.id,\n    user_name: user.name || 'there',\n    user_email: user.email,\n    total_tasks: stats.total_tasks || 0,\n    completed: stats.completed || 0,\n    still_active: stats.still_active || 0,\n    on_time_rate: stats.on_time_rate || 0,\n    completion_rate: stats.completion_rate || 0,\n    high_priority: stats.high_priority || 0,\n    avg_confidence: stats.avg_confidence || 0,\n    completed_this_week: stats.completed_this_week || 0,\n    created_this_week: stats.created_this_week || 0,\n    best_streak: stats.best_streak || 0,\n    productivity_level: stats.productivity_level,\n    badge: badges[stats.productivity_level] || '',\n    insights,\n    recommendations\n  }\n}];"
+      }
+    },
+    {
+      "id": "a6000000-0006-0006-0006-000000000007",
+      "name": "Send Weekly Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1780, 220],
+      "parameters": {
+        "fromEmail": "reports@intentflow.ai",
+        "toEmail": "={{ $json.user_email }}",
+        "subject": "={{ $json.badge }} — Your Weekly Productivity Report",
+        "emailFormat": "html",
+        "message": "=<html><body style=\"font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;\">\n<div style=\"background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center;\">\n  <h1 style=\"color: white; margin: 0;\">📊 Week in Review</h1>\n  <p style=\"color: #e0e0e0; margin: 10px 0 0 0;\">{{ $json.badge }}</p>\n</div>\n\n<div style=\"padding: 20px;\">\n  <p>Hi {{ $json.user_name }}, here's how your week went:</p>\n\n  <table style=\"width:100%; border-collapse:collapse; margin: 20px 0;\">\n    <tr style=\"background:#f8fafc;\">\n      <td style=\"padding:15px; border:1px solid #e2e8f0;\">✅ Completed</td>\n      <td style=\"padding:15px; border:1px solid #e2e8f0; font-weight:bold; font-size:20px; color: #10b981;\">{{ $json.completed }} / {{ $json.total_tasks }}</td>\n    </tr>\n    <tr>\n      <td style=\"padding:15px; border:1px solid #e2e8f0;\">📅 This Week</td>\n      <td style=\"padding:15px; border:1px solid #e2e8f0; font-weight:bold;\">{{ $json.completed_this_week }} done, {{ $json.created_this_week }} created</td>\n    </tr>\n    <tr style=\"background:#f8fafc;\">\n      <td style=\"padding:15px; border:1px solid #e2e8f0;\">⏰ On-Time Rate</td>\n      <td style=\"padding:15px; border:1px solid #e2e8f0; font-weight:bold;\">{{ $json.on_time_rate }}%</td>\n    </tr>\n    <tr>\n      <td style=\"padding:15px; border:1px solid #e2e8f0;\">🎯 Completion Rate</td>\n      <td style=\"padding:15px; border:1px solid #e2e8f0; font-weight:bold;\">{{ $json.completion_rate }}%</td>\n    </tr>\n    {{ $json.best_streak > 1 ? '<tr style=\"background:#f8fafc;\"><td style=\"padding:15px; border:1px solid #e2e8f0;\">🔥 Best Streak</td><td style=\"padding:15px; border:1px solid #e2e8f0; font-weight:bold; color: #f59e0b;\">' + $json.best_streak + ' days</td></tr>' : '' }}\n  </table>\n\n  <h3 style=\"color: #667eea;\">💡 Insights</h3>\n  <ul style=\"line-height:1.8; padding-left: 20px;\">\n    {{ $json.insights.map(i => '<li style=\"margin-bottom: 8px;\">' + i + '</li>').join('') }}\n  </ul>\n\n  {{ $json.recommendations.length > 0 ? '<h3 style=\"color: #667eea;\">🎯 Recommendations</h3><ul style=\"line-height:1.8; padding-left: 20px;\">' + $json.recommendations.map(r => '<li style=\"margin-bottom: 8px;\">' + r + '</li>').join('') + '</ul>' : '' }}\n\n  <div style=\"background: #f0fdf4; border-left: 4px solid #22c55e; padding: 15px; margin: 20px 0;\">\n    <p style=\"margin: 0;\"><strong>Ready for this week?</strong><br/>\n    <a href=\"intentflow://focus\" style=\"color: #15803d;\">Start Focus Mode</a> to tackle your most important tasks.</p>\n  </div>\n</div>\n\n<hr style=\"border: none; border-top: 1px solid #e2e8f0; margin: 20px;\"/>\n<p style=\"font-size:11px; color:#94a3b8; text-align: center;\">\n  You're receiving this because you have an IntentFlow AI account.\n  <a href=\"intentflow://settings/notifications\">Update preferences</a>\n</p>\n</body></html>"
+      },
+      "credentials": { "smtp": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow SMTP" } },
+      "onError": "continue"
+    },
+    {
+      "id": "a6000000-0006-0006-0006-000000000008",
+      "name": "Log Sent Report",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2000, 220],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO weekly_report_logs (user_id, sent_at, completion_rate, productivity_level, created_at) VALUES ('{{ $json.user_id }}', NOW(), {{ $json.completion_rate }}, '{{ $json.productivity_level }}', NOW());"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } },
+      "onError": "continue"
+    },
+    {
+      "id": "a6000000-0006-0006-0006-000000000009",
+      "name": "No Users — Stop",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [900, 380],
+      "parameters": {}
+    },
+    {
+      "id": "a6000000-0006-0006-0006-000000000010",
+      "name": "Catch Errors",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [1120, 480],
+      "parameters": {}
+    },
+    {
+      "id": "a6000000-0006-0006-0006-000000000011",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1340, 480],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_errors (workflow_id, node_name, error_message, error_data, created_at) VALUES ('intentflow-automation-06', '{{ $json.errorNode }}', '{{ $json.errorMessage }}', '{{ JSON.stringify($json) }}', NOW());"
+      },
+      "credentials": { "postgres": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "IntentFlow Database" } }
+    }
+  ],
+  "connections": {
+    "Monday 8 AM Trigger": {
+      "main": [[{ "node": "Get Active Users", "type": "main", "index": 0 }]]
+    },
+    "Get Active Users": {
+      "main": [[{ "node": "Has Users?", "type": "main", "index": 0 }]]
+    },
+    "Has Users?": {
+      "main": [
+        [{ "node": "Filter Users by Email Preference", "type": "main", "index": 0 }],
+        [{ "node": "No Users — Stop", "type": "main", "index": 0 }]
+      ]
+    },
+    "Filter Users by Email Preference": {
+      "main": [[{ "node": "Loop Over Users", "type": "main", "index": 0 }]]
+    },
+    "Loop Over Users": {
+      "main": [[{ "node": "Query Weekly Stats", "type": "main", "index": 0 }]]
+    },
+    "Query Weekly Stats": {
+      "main": [[{ "node": "Generate Insights", "type": "main", "index": 0 }]]
+    },
+    "Generate Insights": {
+      "main": [[{ "node": "Send Weekly Email", "type": "main", "index": 0 }]]
+    },
+    "Send Weekly Email": {
+      "main": [[{ "node": "Log Sent Report", "type": "main", "index": 0 }]]
+    },
+    "Log Sent Report": {
+      "main": [[{ "node": "Loop Over Users", "type": "main", "index": 0 }]]
+    },
+    "Catch Errors": {
+      "main": [[{ "node": "Log Error", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1", "errorWorkflow": "intentflow-automation-06" },
+  "versionId": "a6000000-0006-0006-0006-000000000100",
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "intentflow-automation-06",
+  "tags": [{ "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z", "id": "tag-core", "name": "core" }]
+}

@@ -80,7 +80,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         entity: t.category || "General",
         action: t.title,
         trigger: t.due_date ? new Date(t.due_date).toLocaleDateString() : "No due date",
-        status: t.status === "pending_review" ? "pending" : t.status === "completed" ? "confirmed" : "pending",
+        status: t.status === "completed" ? "confirmed" : 
+                t.status === "in_progress" ? "confirmed" : 
+                t.status === "pending" ? "pending" : 
+                "pending",
         createdAt: t.created_at || t.createdAt,
       }));
       setTasks(mappedTasks);

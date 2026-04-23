@@ -367,7 +367,7 @@ const styles = StyleSheet.create({
   },
   logoText: {
     fontSize: 22,
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Syne_700Bold",
     letterSpacing: -0.5,
   },
   card: {
@@ -378,13 +378,13 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 26,
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Syne_700Bold",
     textAlign: "center",
     letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 14,
-    fontFamily: "Inter_400Regular",
+    fontFamily: "DMSans_400Regular",
     textAlign: "center",
     marginBottom: 4,
   },
@@ -402,7 +402,7 @@ const styles = StyleSheet.create({
   },
   tabText: {
     fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "DMSans_500Medium",
   },
   nameRow: {
     flexDirection: "row",
@@ -420,18 +420,18 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 15,
-    fontFamily: "Inter_400Regular",
+    fontFamily: "DMSans_400Regular",
     padding: 0,
   },
   errorText: {
     fontSize: 12,
-    fontFamily: "Inter_500Medium",
+    fontFamily: "DMSans_500Medium",
     textAlign: "center",
     marginTop: 8,
   },
   successText: {
     fontSize: 12,
-    fontFamily: "Inter_500Medium",
+    fontFamily: "DMSans_500Medium",
     textAlign: "center",
     marginTop: 8,
   },
@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
   },
   forgotText: {
     fontSize: 13,
-    fontFamily: "Inter_500Medium",
+    fontFamily: "DMSans_500Medium",
   },
   launchBtn: {
     height: 52,
@@ -453,7 +453,7 @@ const styles = StyleSheet.create({
   },
   launchText: {
     fontSize: 16,
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Syne_700Bold",
     letterSpacing: 0.3,
   },
   orRow: {
@@ -468,7 +468,7 @@ const styles = StyleSheet.create({
   },
   orText: {
     fontSize: 12,
-    fontFamily: "Inter_500Medium",
+    fontFamily: "DMSans_500Medium",
   },
   googleBtn: {
     height: 52,
@@ -481,11 +481,11 @@ const styles = StyleSheet.create({
   },
   googleG: {
     fontSize: 18,
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Syne_700Bold",
     color: "#4285F4",
   },
   googleText: {
     fontSize: 15,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "DMSans_500Medium",
   },
 });

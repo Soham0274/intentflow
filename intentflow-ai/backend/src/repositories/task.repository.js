@@ -56,11 +56,10 @@ async function update(taskId, userId, updates) {
 }
 
 async function softDelete(taskId, userId) {
-  // Rather than `deleted_at`, we can add a 'deleted' status or actually delete if the schema prevents soft deletes
-  // Let's assume we maintain `status = 'deleted'`.
+  // Since database doesn't have a 'deleted' status, we actually delete the record
   const { data, error } = await supabase
     .from('tasks')
-    .update({ status: 'deleted', updated_at: new Date().toISOString() })
+    .delete()
     .eq('id', taskId)
     .eq('user_id', userId)
     .select()

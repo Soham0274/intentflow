@@ -1,19 +1,36 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Animated,
+  View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Animated, ActivityIndicator
 } from 'react-native';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { StatusPill } from '../components/StatusPill';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Fonts, Radius } from '@/constants/theme';
+import { confirmHitl, rejectHitl } from '@/services/api';
+import { ScrollView } from 'react-native-gesture-handler';
 
 export default function ConfirmTaskScreen() {
   const { colors, typography } = useTheme();
   const router = useRouter();
+  const params = useLocalSearchParams();
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  // Parse task data from navigation params
+  const task = params.task ? JSON.parse(params.task as string) : {};
+  const transcript = params.transcript as string || '';
+  const hitlId = params.hitlId as string || '';
+
+  // Extract task fields with fallbacks
+  const taskTitle = task.title || task.description || 'New Intent';
+  const taskPriority = task.priority || 'medium';
+  const taskCategory = task.category || 'general';
+  const dueDate = task.due_date ? new Date(task.due_date).toLocaleString() : 'Not specified';
+  const taskId = task.id || `INT-${Math.floor(1000 + Math.random() * 9000)}`;
 
   useEffect(() => {
     Animated.parallel([
@@ -22,11 +39,45 @@ export default function ConfirmTaskScreen() {
     ]).start();
   }, []);
 
+  const handleConfirm = async () => {
+    setIsProcessing(true);
+    try {
+      if (hitlId) {
+        await confirmHitl(hitlId);
+      }
+      // Wait briefly for backend to process before navigating
+      await new Promise(resolve => setTimeout(resolve, 800));
+      // Success - go to the new Intents history tab with refresh param
+      router.replace('/(tabs)/intents?refresh=true');
+    } catch (err) {
+      console.error('Confirm error:', err);
+      // Fallback
+      router.replace('/(tabs)/intents');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    setIsProcessing(true);
+    try {
+      if (hitlId) {
+        await rejectHitl(hitlId, 'User cancelled');
+      }
+      router.back();
+    } catch (err) {
+      console.error('Cancel error:', err);
+      router.back();
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0A0B0F' }}>
       <View style={styles.topBar}>
         <TouchableOpacity 
-          onPress={() => router.back()} 
+          onPress={handleCancel} 
           style={[styles.backBtn, { backgroundColor: '#1E2130' }]}
         >
           <Feather name="chevron-left" size={20} color="#A0A8C0" />
@@ -49,19 +100,27 @@ export default function ConfirmTaskScreen() {
 
         <View style={styles.intentCard}>
           <View style={styles.cardHeader}>
-             <Text style={styles.idLabel}>ID: INT-8821</Text>
-             <View style={styles.confirmedBadge}>
-                <Text style={styles.confirmedText}>CONFIRMED</Text>
+             <Text style={styles.idLabel}>ID: {taskId}</Text>
+             <View style={[styles.confirmedBadge, { 
+               backgroundColor: taskPriority === 'high' ? 'rgba(255,80,80,0.15)' : 
+                               taskPriority === 'low' ? 'rgba(100,200,255,0.15)' : 
+                               'rgba(0,200,150,0.12)'
+             }]}>
+                <Text style={[styles.confirmedText, {
+                  color: taskPriority === 'high' ? '#FF5050' : 
+                         taskPriority === 'low' ? '#64C8FF' : 
+                         '#00C896'
+                }]}>{taskPriority.toUpperCase()}</Text>
              </View>
           </View>
 
           <View style={styles.detailRow}>
              <View style={styles.iconBox}>
-                <Feather name="user" size={16} color="#6C63FF" />
+                <Feather name="file-text" size={16} color="#6C63FF" />
              </View>
              <View style={styles.detailInfo}>
-                <Text style={styles.detailLabel}>ENTITY</Text>
-                <Text style={styles.detailValue}>Contact</Text>
+                <Text style={styles.detailLabel}>TITLE</Text>
+                <Text style={styles.detailValue}>{taskTitle}</Text>
              </View>
           </View>
 
@@ -72,8 +131,8 @@ export default function ConfirmTaskScreen() {
                 <Feather name="layers" size={16} color="#6C63FF" />
              </View>
              <View style={styles.detailInfo}>
-                <Text style={styles.detailLabel}>ACTION TYPE</Text>
-                <Text style={styles.detailValue}>Follow up · Task List</Text>
+                <Text style={styles.detailLabel}>CATEGORY</Text>
+                <Text style={styles.detailValue}>{taskCategory.charAt(0).toUpperCase() + taskCategory.slice(1)}</Text>
              </View>
           </View>
 
@@ -84,8 +143,8 @@ export default function ConfirmTaskScreen() {
                 <Feather name="clock" size={16} color="#FF8C42" />
              </View>
              <View style={styles.detailInfo}>
-                <Text style={styles.detailLabel}>TRIGGER</Text>
-                <Text style={styles.detailValue}>Today 3:00 PM</Text>
+                <Text style={styles.detailLabel}>DUE DATE</Text>
+                <Text style={styles.detailValue}>{dueDate}</Text>
              </View>
           </View>
         </View>
@@ -93,25 +152,27 @@ export default function ConfirmTaskScreen() {
         <View style={styles.actions}>
            <TouchableOpacity
              style={styles.confirmBtn}
-             onPress={() => router.replace('/')}
+             onPress={handleConfirm}
              activeOpacity={0.8}
+             disabled={isProcessing}
            >
               <LinearGradient
                 colors={['#6C63FF', '#4A3FF7']}
                 style={styles.gradBtn}
               >
-                <Text style={styles.confirmText}>Confirm Task ✓</Text>
+                {isProcessing ? <ActivityIndicator color="#FFF" /> : <Text style={styles.confirmText}>Confirm Task ✓</Text>}
               </LinearGradient>
            </TouchableOpacity>
 
            <TouchableOpacity
              style={styles.editBtn}
              onPress={() => router.push('/review')}
+             disabled={isProcessing}
            >
               <Text style={styles.editText}>Edit Details</Text>
            </TouchableOpacity>
 
-           <TouchableOpacity style={styles.cancelBtn}>
+           <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel} disabled={isProcessing}>
               <Text style={styles.cancelText}>CANCEL REQUEST</Text>
            </TouchableOpacity>
         </View>
@@ -119,8 +180,6 @@ export default function ConfirmTaskScreen() {
     </SafeAreaView>
   );
 }
-
-import { ScrollView } from 'react-native-gesture-handler';
 
 const styles = StyleSheet.create({
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 16 },

@@ -33,6 +33,8 @@ import { useApp } from "@/context/AppContext";
 import { processVoice, processNLP, createTask } from "@/services/api";
 import { voiceRecorder } from "@/services/voiceRecorder";
 import { Fonts, Radius } from "@/constants/theme";
+import { MiniMap } from "@/components/MiniMap";
+import { LocationRecommendation, detectCategory } from "@/services/locationRecommendations";
 
 // ─── Types ────────────────────────────────────────────────────────
 type Screen = "voice" | "text";
@@ -171,11 +173,14 @@ export default function IntentCreationScreen() {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [location, setLocation] = useState("");
+  const [locationResolved, setLocationResolved] = useState(false);
   const [priority, setPriority] = useState<Priority>("Medium");
   const [taskStatus, setTaskStatus] = useState<TaskStatus>("Active");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState<LocationRecommendation | null>(null);
+  const [showMiniMap, setShowMiniMap] = useState(false);
 
   // ─── Voice Logic ────────────────────────────────────────────────
 
@@ -210,6 +215,7 @@ export default function IntentCreationScreen() {
             ];
             if (t.category) newEntities.push({ label: "CATEGORY", value: t.category.toUpperCase(), icon: "🏷️" });
             if (t.due_date) newEntities.push({ label: "TIME", value: t.due_date.toUpperCase(), icon: "🕒" });
+            if (t.location_name) newEntities.push({ label: "LOCATION", value: t.location_name.toUpperCase(), icon: "📍" });
             setEntities(newEntities);
             
             // Auto-populate text form for easy editing
@@ -217,6 +223,17 @@ export default function IntentCreationScreen() {
             setNlpInput(data.transcript || "");
             setActionType(t.category?.toLowerCase() || "work");
             setPriority(t.priority === "high" ? "High" : t.priority === "medium" ? "Medium" : "Low");
+            
+            // Handle location
+            if (t.location_name) {
+              setLocation(t.location_name);
+              // Location is resolved if we have coordinates
+              setLocationResolved(!!(t.location_lat && t.location_lng));
+            } else {
+              setLocation("");
+              setLocationResolved(false);
+            }
+            
             if (t.due_date) {
               if (t.due_date.includes("T")) {
                  setDate(t.due_date.split("T")[0]);
@@ -268,7 +285,30 @@ export default function IntentCreationScreen() {
         setSubject(t.title);
         setActionType(t.category?.toLowerCase() || "work");
         setPriority(t.priority === "high" ? "High" : t.priority === "medium" ? "Medium" : "Low");
-        if (t.due_date) setDate(t.due_date);
+        
+        // Handle date and time extraction (same logic as voice processing)
+        if (t.due_date) {
+          if (t.due_date.includes("T")) {
+            setDate(t.due_date.split("T")[0]);
+            const parsedTime = t.due_date.split("T")[1].substring(0, 5);
+            setTime(parsedTime === "00:00" ? "" : parsedTime);
+          } else if (t.due_date.includes(" ")) {
+            setDate(t.due_date.split(' ')[0]);
+            const timePart = t.due_date.split(' ').slice(1).join(' ');
+            if (timePart && timePart !== "00:00") {
+              setTime(timePart.substring(0, 5));
+            }
+          } else {
+            setDate(t.due_date);
+            setTime("");
+          }
+        }
+        
+        // Handle location extraction for geofencing
+        if (t.location_name) {
+          setLocation(t.location_name);
+          setLocationResolved(!!(t.location_lat && t.location_lng));
+        }
       }
     } catch (err) {
       console.error(err);
@@ -465,10 +505,58 @@ export default function IntentCreationScreen() {
            </View>
         </View>
 
-        {/* Location */}
+        {/* Location with Geofence Status */}
         <View style={S.fieldGroup}>
-          <Text style={S.fieldLabel}>Location</Text>
-          <TextInput value={location} onChangeText={setLocation} style={S.darkInput} placeholder="Enter location..." placeholderTextColor="#555" />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text style={S.fieldLabel}>Location</Text>
+            <Feather name="map-pin" size={12} color="#7c6fe0" />
+            {locationResolved && (
+              <View style={S.geofenceReadyBadge}>
+                <Text style={S.geofenceReadyText}>Target +</Text>
+              </View>
+            )}
+          </View>
+          <View
+            style={[
+              S.locationInputWrap,
+              locationResolved && S.locationInputResolved,
+            ]}
+          >
+            <TextInput
+              value={location}
+              onChangeText={(text) => {
+                setLocation(text);
+                setLocationResolved(false); // Reset when user edits
+                setSelectedLocation(null);
+                // Show mini map if category keywords detected
+                setShowMiniMap(!!detectCategory(text));
+              }}
+              style={S.darkInput}
+              placeholder="Enter location (e.g., Whole Foods, CVS)..."
+              placeholderTextColor="#555"
+            />
+            {locationResolved && (
+              <View style={S.geofenceIndicator}>
+                <Feather name="check" size={16} color="#22c55e" />
+              </View>
+            )}
+          </View>
+          
+          {/* Mini Map for Location Selection */}
+          {showMiniMap && (
+            <Animated.View entering={FadeInDown} style={{ marginTop: 12 }}>
+              <MiniMap
+                searchQuery={location}
+                selectedLocation={selectedLocation}
+                onLocationSelect={(loc) => {
+                  setSelectedLocation(loc);
+                  setLocation(loc.name);
+                  setLocationResolved(true);
+                }}
+                showRecommendations={true}
+              />
+            </Animated.View>
+          )}
         </View>
 
         {/* Priority */}
@@ -969,5 +1057,44 @@ const S = StyleSheet.create({
     color: "#fff",
     fontWeight: "800",
     fontSize: 15,
+  },
+  // Geofence indicator styles
+  geofenceReadyBadge: {
+    backgroundColor: "#22c55e20",
+    borderWidth: 1,
+    borderColor: "#22c55e40",
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginLeft: 4,
+  },
+  geofenceReadyText: {
+    color: "#22c55e",
+    fontSize: 10,
+    fontFamily: Fonts.bold,
+    letterSpacing: 0.5,
+  },
+  locationInputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#13131f",
+    borderWidth: 1,
+    borderColor: "#2a2a3e",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 45,
+  },
+  locationInputResolved: {
+    borderColor: "#22c55e60",
+    borderWidth: 1.5,
+    boxShadow: "0px 0px 8px rgba(34,197,94,0.3)",
+  },
+  geofenceIndicator: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#22c55e20",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

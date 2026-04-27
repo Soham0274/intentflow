@@ -8,6 +8,12 @@ import React, {
 } from "react";
 import { useAuth } from "../store/AuthContext";
 import * as api from "../services/api";
+import {
+  syncGeofences,
+  requestLocationPermissions,
+  checkLocationPermissions,
+  GeofencedTask,
+} from "../services/geofencing";
 
 export interface IntentTask {
   id: string;
@@ -16,6 +22,11 @@ export interface IntentTask {
   trigger: string;
   status: "pending" | "active" | "completed";
   createdAt: string;
+  // Location data for geolocation features
+  locationName?: string;
+  locationLat?: number;
+  locationLng?: number;
+  locationAddress?: string;
 }
 
 export interface LifeArea {
@@ -35,6 +46,8 @@ interface AppContextType {
   quietHours: boolean;
   voiceSensitivity: "Low" | "Medium" | "High";
   autoConfirm: boolean;
+  contextualIntelligence: boolean;
+  locationPermissions: { foreground: boolean; background: boolean };
   voiceTrigger: number;
   isLoading: boolean;
   login: () => void;
@@ -47,6 +60,8 @@ interface AppContextType {
   setQuietHours: (v: boolean) => void;
   setVoiceSensitivity: (v: "Low" | "Medium" | "High") => void;
   setAutoConfirm: (v: boolean) => void;
+  setContextualIntelligence: (v: boolean) => Promise<boolean>;
+  syncGeofences: () => Promise<boolean>;
   triggerVoice: () => void;
 }
 
@@ -61,8 +76,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [quietHours, setQuietHoursState] = useState(true);
   const [voiceSensitivity, setVoiceSensitivityState] = useState<"Low" | "Medium" | "High">("High");
   const [autoConfirm, setAutoConfirmState] = useState(false);
+  const [contextualIntelligence, setContextualIntelligenceState] = useState(false);
+  const [locationPermissions, setLocationPermissions] = useState({ foreground: false, background: false });
   const [voiceTrigger, setVoiceTrigger] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Check location permissions on mount
+  useEffect(() => {
+    checkLocationPermissions().then(setLocationPermissions);
+  }, []);
 
   // Derive user initial from real user data
   const userName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split("@")[0] || "User";
@@ -74,16 +96,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const response = await api.fetchTasks({ limit: 10 });
       const tasksData = response.data || response;
-      // Map backend task format to IntentTask format
+      // Map backend task format to IntentTask format with location data
       const mappedTasks: IntentTask[] = tasksData.map((t: any) => ({
         id: t.id,
         entity: t.category || "General",
         action: t.title,
         trigger: t.due_date ? new Date(t.due_date).toLocaleDateString() : "No due date",
-        status: t.status === "completed" ? "completed" : 
-                t.status === "active" ? "active" : 
+        status: t.status === "completed" ? "completed" :
+                t.status === "active" ? "active" :
                 "pending",
         createdAt: t.created_at || t.createdAt,
+        // Location data from backend
+        locationName: t.location_name || t.locationName,
+        locationLat: t.location_lat || t.locationLat,
+        locationLng: t.location_lng || t.locationLng,
+        locationAddress: t.location_address || t.locationAddress,
       }));
       setTasks(mappedTasks);
     } catch (error) {
@@ -131,13 +158,70 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (authIsAuthenticated && user) {
       Promise.all([fetchTasks(), fetchLifeAreas()]).finally(() => {
         setIsLoading(false);
+        // Sync geofences after fetching tasks
+        if (contextualIntelligence) {
+          handleSyncGeofences();
+        }
       });
     } else {
       setTasks([]);
       setLifeAreas([]);
       setIsLoading(false);
     }
-  }, [authIsAuthenticated, user, fetchTasks, fetchLifeAreas]);
+  }, [authIsAuthenticated, user, fetchTasks, fetchLifeAreas, contextualIntelligence]);
+
+  // Sync geofences when tasks change or contextual intelligence is enabled
+  useEffect(() => {
+    if (contextualIntelligence && tasks.length > 0 && locationPermissions.background) {
+      handleSyncGeofences();
+    }
+  }, [tasks, contextualIntelligence, locationPermissions.background]);
+
+  // Handle contextual intelligence toggle
+  const setContextualIntelligence = useCallback(async (enabled: boolean): Promise<boolean> => {
+    if (enabled) {
+      // Request location permissions
+      const locationPerms = await requestLocationPermissions();
+      
+      setLocationPermissions(locationPerms);
+      
+      if (!locationPerms.background) {
+        console.warn('[ContextualIntelligence] Background location denied');
+        setContextualIntelligenceState(false);
+        return false;
+      }
+      
+      // Sync geofences immediately
+      await handleSyncGeofences();
+    } else {
+      // Stop all geofencing when disabled
+      const { stopGeofencing } = await import('../services/geofencing');
+      await stopGeofencing();
+    }
+    
+    setContextualIntelligenceState(enabled);
+    return true;
+  }, []);
+
+  // Sync geofences with current tasks
+  const handleSyncGeofences = useCallback(async (): Promise<boolean> => {
+    if (!contextualIntelligence || !locationPermissions.background) {
+      return false;
+    }
+
+    const geofencedTasks: GeofencedTask[] = tasks.map(t => ({
+      id: t.id,
+      title: (t as any).title || t.action,
+      location_name: (t as any).location_name,
+      location_lat: (t as any).location_lat,
+      location_lng: (t as any).location_lng,
+      geofence_radius_m: (t as any).geofence_radius_m || 200,
+      geofence_enabled: !!(t as any).location_lat && !!(t as any).location_lng,
+      status: t.status,
+    }));
+
+    return await syncGeofences(geofencedTasks);
+  }, [tasks, contextualIntelligence, locationPermissions.background]);
 
   const login = () => setIsAuthenticated(true);
   const logout = () => setIsAuthenticated(false);
@@ -176,6 +260,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         quietHours,
         voiceSensitivity,
         autoConfirm,
+        contextualIntelligence,
+        locationPermissions,
         voiceTrigger,
         isLoading,
         login,
@@ -188,6 +274,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setQuietHours: setQuietHoursState,
         setVoiceSensitivity: setVoiceSensitivityState,
         setAutoConfirm: setAutoConfirmState,
+        setContextualIntelligence,
+        syncGeofences: handleSyncGeofences,
         triggerVoice,
       }}
     >

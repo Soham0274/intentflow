@@ -331,30 +331,21 @@ async function extractTasksFromAudio(audioBase64, mimeType, userId) {
   return { hitlId: queueEntry.id, transcript, tasks, highConfidence, needsReview, persistedCount: persistedTasks.length };
 }
 
+const locationService = require('./location.service');
+
 // ─── Geocoding Service ───────────────────────────────────────────────────────
 async function geocodeLocation(locationName) {
   if (!locationName) return null;
   
   try {
-    // Use LocationIQ Geocoding API (requires LOCATIONIQ_ACCESS_TOKEN in env)
-    const locationIqToken = config.LOCATIONIQ?.ACCESS_TOKEN || process.env.LOCATIONIQ_ACCESS_TOKEN;
+    const results = await locationService.geocode(locationName);
     
-    if (!locationIqToken) {
-      console.warn('[Geocoding] No LocationIQ token configured, skipping geocoding');
-      return null;
-    }
-    
-    const encodedQuery = encodeURIComponent(locationName);
-    const url = `https://us1.locationiq.com/v1/search.php?key=${locationIqToken}&q=${encodedQuery}&format=json&limit=1`;
-    
-    const response = await axios.get(url, { timeout: 5000 });
-    
-    if (response.data?.length > 0) {
-      const result = response.data[0];
+    if (results && results.length > 0) {
+      const result = results[0];
       const lat = parseFloat(result.lat);
       const lng = parseFloat(result.lon);
       
-      console.warn('[Geocoding] ✅ Resolved:', locationName, '→', lat, lng);
+      console.warn('[NLP:Geocoding] ✅ Resolved:', locationName, '→', lat, lng);
       return {
         lat,
         lng,
@@ -363,10 +354,10 @@ async function geocodeLocation(locationName) {
       };
     }
     
-    console.warn('[Geocoding] No results for:', locationName);
+    console.warn('[NLP:Geocoding] No results for:', locationName);
     return null;
   } catch (err) {
-    console.error('[Geocoding] Error:', err.message);
+    console.error('[NLP:Geocoding] Error:', err.message);
     return null;
   }
 }

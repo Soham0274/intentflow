@@ -14,6 +14,7 @@ import * as Haptics from "expo-haptics";
 
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
+import { useAuth } from "@/store/AuthContext";
 
 function TabButton({
   name,
@@ -58,6 +59,23 @@ function TabButton({
   );
 }
 
+function TopRightMenu({ onProfilePress }: { onProfilePress: () => void }) {
+  const colors = useColors();
+  const { userInitial } = useApp();
+  
+  return (
+    <TouchableOpacity
+      onPress={onProfilePress}
+      style={[styles.topRightMenu, { backgroundColor: colors.card }]}
+      activeOpacity={0.8}
+    >
+      <Text style={[styles.userInitial, { color: colors.primary }]}>
+        {userInitial}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 function GlassTabBar() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -65,12 +83,6 @@ function GlassTabBar() {
   const { triggerVoice } = useApp();
 
   const activeRoute = pathname.split("/").pop() || "index";
-
-
-  // Hide navbar completely on profile screen - show only profile content
-  if (activeRoute === "profile") {
-    return null;
-  }
 
   const handleMic = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -149,10 +161,10 @@ function GlassTabBar() {
             active={activeRoute === "calendar"}
           />
           <TabButton
-            name="profile"
-            icon="user"
-            label="Profile"
-            active={activeRoute === "profile"}
+            name="geolocation"
+            icon="map-pin"
+            label="Location"
+            active={activeRoute === "geolocation"}
           />
         </View>
       </View>
@@ -163,26 +175,103 @@ function GlassTabBar() {
 export default function TabLayout() {
   const pathname = usePathname();
   const activeRoute = pathname?.replace("/(tabs)/", "").replace(/\/$/, "") || "index";
-  
-  // Hide tab bar completely on profile screen
-  const showTabBar = activeRoute !== "profile";
+  const { userInitial } = useApp();
 
   return (
     <Tabs
-      tabBar={showTabBar ? () => <GlassTabBar /> : () => null}
-      screenOptions={{ headerShown: false }}
+      tabBar={() => <GlassTabBar />}
+      screenOptions={{ 
+        headerShown: true,
+        header: ({ navigation }) => (
+          <View style={[styles.headerContainer, { paddingTop: 50 }]}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("profile")}
+              style={[
+                styles.headerProfileBtn,
+                { backgroundColor: "#1a1a2e", borderColor: "rgba(124,111,224,0.3)" }
+              ]}
+            >
+              <Text style={[styles.headerInitial, { color: "#7c6fe0" }]}>
+                {userInitial}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ),
+      }}
     >
-      <Tabs.Screen name="index" />
-      <Tabs.Screen name="calendar" />
-      <Tabs.Screen name="intents" />
-      <Tabs.Screen name="profile" />
+      <Tabs.Screen 
+        name="index" 
+        options={{ 
+          headerShown: true,
+          headerTitle: "",
+        }}
+      />
+      <Tabs.Screen 
+        name="calendar" 
+        options={{ 
+          headerShown: true,
+          headerTitle: "",
+        }}
+      />
+      <Tabs.Screen 
+        name="intents" 
+        options={{ 
+          headerShown: true,
+          headerTitle: "",
+        }}
+      />
+      <Tabs.Screen 
+        name="geolocation" 
+        options={{ 
+          headerShown: true,
+          headerTitle: "",
+        }}
+      />
+      <Tabs.Screen name="profile" options={{ href: null }} />
       <Tabs.Screen name="alerts" options={{ href: null }} />
-      <Tabs.Screen name="collections" options={{ href: null }} />
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
+  headerContainer: {
+    position: "absolute",
+    top: 0,
+    right: 16,
+    zIndex: 100,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
+  headerProfileBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0px 2px 8px rgba(124,111,224,0.3)",
+  },
+  headerInitial: {
+    fontSize: 16,
+    fontFamily: "Syne_700Bold",
+  },
+  topRightMenu: {
+    position: "absolute",
+    top: 50,
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 100,
+    borderWidth: 1,
+    borderColor: "rgba(124,111,224,0.3)",
+  },
+  userInitial: {
+    fontSize: 16,
+    fontFamily: "Syne_700Bold",
+  },
   floatOuter: {
     position: "absolute",
     left: 14,

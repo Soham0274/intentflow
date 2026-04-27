@@ -5,8 +5,10 @@ import { supabase } from './supabase';
 // Find your IP: Windows (ipconfig), Mac/Linux (ifconfig or ipconfig getifaddr en0)
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://intentflow-9k6n.onrender.com/api';
 
-console.log('[API Config] EXPO_PUBLIC_API_URL:', process.env.EXPO_PUBLIC_API_URL);
-console.log('[API Config] Final API_URL:', API_URL);
+if (__DEV__) {
+  console.log('[API Config] EXPO_PUBLIC_API_URL:', process.env.EXPO_PUBLIC_API_URL);
+  console.log('[API Config] Final API_URL:', API_URL);
+}
 
 const api = axios.create({
   baseURL: API_URL,
@@ -275,6 +277,32 @@ export const fetchCalendarEvents = async () => {
 
 export const syncTaskToCalendar = async (task: any) => {
   const response = await api.post('/calendar/sync-task', { task });
+  return response.data;
+};
+
+// LOCATION APIs (Proxy for LocationIQ)
+export const geocodeLocation = async (query: string) => {
+  const response = await api.get('/location/geocode', { params: { q: query } });
+  return response.data;
+};
+
+export const reverseGeocode = async (lat: number, lon: number) => {
+  const response = await api.get('/location/reverse', { params: { lat, lon } });
+  return response.data;
+};
+
+export const fetchNearbyPOIs = async (lat: number, lon: number, tag: string, radius?: number) => {
+  const response = await api.get('/location/nearby', { params: { lat, lon, tag, radius } });
+  return response.data;
+};
+
+export const fetchAutocomplete = async (query: string) => {
+  const response = await api.get('/location/autocomplete', { params: { q: query } });
+  return response.data;
+};
+
+export const fetchLocationBalance = async () => {
+  const response = await api.get('/location/balance');
   return response.data;
 };
 

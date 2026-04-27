@@ -7,6 +7,7 @@ require('dotenv').config();
 const app = require('./app');
 const config = require('./config/index');
 const logger = require('./utils/logger');
+const monitoring = require('./utils/monitoring');
 
 const PORT = config.PORT || 3000;
 
@@ -17,6 +18,9 @@ const server = app.listen(PORT, () => {
     environment: config.NODE_ENV,
     nodeVersion: process.version
   });
+  
+  // Start background monitoring tasks
+  monitoring.startMonitoring();
 });
 
 process.on('uncaughtException', (err) => {

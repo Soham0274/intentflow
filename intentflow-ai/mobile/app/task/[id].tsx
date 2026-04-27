@@ -29,9 +29,9 @@ export default function TaskDetailScreen() {
   const insets = useSafeAreaInsets();
   const { tasks, updateTask } = useApp();
 
-  const task = tasks.find((t) => t.id === id);
+  const task = tasks.find((t) => t.id === id) as any;
   // Default to empty arrays for missing arrays
-  const subtasks = (task as any)?.subtasks || [];
+  const subtasks = task?.subtasks || [];
   const [newSubtask, setNewSubtask] = useState('');
 
   if (!task) {
@@ -121,18 +121,28 @@ export default function TaskDetailScreen() {
 
         {/* Info grid */}
         <View style={[styles.section, styles.infoGrid]}>
-          {task.dueDate && (
+          {task.due_date && (
             <TouchableOpacity style={styles.infoCard}>
               <Text style={styles.infoIcon}>📅</Text>
               <Text style={styles.infoLabel}>Due Date</Text>
-              <Text style={styles.infoValue}>{task.dueDate}</Text>
+              <Text style={styles.infoValue}>
+                {task.due_date.includes('T') 
+                  ? task.due_date.split('T')[0] 
+                  : task.due_date.split(' ')[0]}
+              </Text>
             </TouchableOpacity>
           )}
-          {task.dueTime && (
+          {(task.due_time || (task.due_date && (task.due_date.includes('T') || task.due_date.includes(' ')))) && (
             <TouchableOpacity style={styles.infoCard}>
               <Text style={styles.infoIcon}>⏰</Text>
               <Text style={styles.infoLabel}>Due Time</Text>
-              <Text style={styles.infoValue}>{task.dueTime}</Text>
+              <Text style={styles.infoValue}>
+                {task.due_time || (task.due_date?.includes('T') 
+                  ? task.due_date.split('T')[1].substring(0, 5)
+                  : task.due_date?.includes(' ') 
+                    ? task.due_date.split(' ')[1].substring(0, 5)
+                    : '')}
+              </Text>
             </TouchableOpacity>
           )}
           {task.priority && (
@@ -148,17 +158,49 @@ export default function TaskDetailScreen() {
             <TouchableOpacity style={styles.infoCard}>
               <Text style={styles.infoIcon}>🏷</Text>
               <Text style={styles.infoLabel}>Category</Text>
-              <Text style={styles.infoValue}>{task.category}</Text>
+              <Text style={styles.infoValue}>
+                {String(task.category).charAt(0).toUpperCase() + String(task.category).slice(1)}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
 
+        {/* Geofenced Location */}
+        {task.location_name && task.location_lat && (
+          <View style={styles.section}>
+            <View style={styles.locationHeader}>
+              <Text style={styles.sectionLabel}>📍 Location</Text>
+              <View style={styles.radarPulse}>
+                <View style={[styles.radarRing, styles.radarRing1]} />
+                <View style={[styles.radarRing, styles.radarRing2]} />
+                <View style={[styles.radarRing, styles.radarRing3]} />
+                <View style={styles.radarCenter}>
+                  <Text style={styles.radarIcon}>📍</Text>
+                </View>
+              </View>
+            </View>
+            <View style={styles.locationCard}>
+              <View style={styles.locationContent}>
+                <Text style={styles.locationName}>{task.location_name}</Text>
+                <Text style={styles.locationStatus}>
+                  📍 {task.location_lat?.toFixed(4)}, {task.location_lng?.toFixed(4)} (Geofenced)
+                </Text>
+              </View>
+              <View style={styles.geofenceBadge}>
+                <Text style={styles.geofenceBadgeText}>
+                  {task.geofence_radius_m || 200}m radius
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* People */}
-            {(task as any)?.people && (task as any).people.length > 0 && (
+            {task?.people && task.people.length > 0 && (
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>People</Text>
                 <View style={styles.peopleRow}>
-                  {(task as any).people.map((person: string, idx: number) => (
+                  {task.people.map((person: string, idx: number) => (
                     <AvatarWithColor key={idx} initials={person[0]} size={36} gradient />
                   ))}
                 </View>
@@ -170,7 +212,7 @@ export default function TaskDetailScreen() {
           <Text style={styles.sectionLabel}>Notes</Text>
           <View style={styles.notesBox}>
             <Text style={styles.notesText}>
-              {(task as any).description || 'No notes yet. Tap to add…'}
+              {task.description || 'No notes yet. Tap to add…'}
             </Text>
           </View>
         </View>
@@ -544,4 +586,89 @@ const styles = StyleSheet.create({
   backText: { fontFamily: Fonts.medium, fontSize: 15, color: Colors.textSecondary },
   notFound: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   notFoundText: { fontFamily: Fonts.regular, fontSize: 16, color: Colors.textMuted },
+
+  // Geofence Location styles
+  locationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  radarPulse: {
+    width: 50,
+    height: 50,
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radarRing: {
+    position: 'absolute',
+    borderRadius: 25,
+    borderWidth: 1,
+    borderColor: '#7c6fe0',
+    backgroundColor: 'transparent',
+  },
+  radarRing1: {
+    width: 50,
+    height: 50,
+    opacity: 0.3,
+  },
+  radarRing2: {
+    width: 35,
+    height: 35,
+    opacity: 0.5,
+  },
+  radarRing3: {
+    width: 20,
+    height: 20,
+    opacity: 0.7,
+  },
+  radarCenter: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#7c6fe0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  radarIcon: {
+    fontSize: 8,
+  },
+  locationCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1a2e',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#2a2a3e',
+  },
+  locationContent: {
+    flex: 1,
+  },
+  locationName: {
+    fontFamily: Fonts.bold,
+    fontSize: 15,
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  locationStatus: {
+    fontFamily: Fonts.regular,
+    fontSize: 12,
+    color: '#22c55e',
+  },
+  geofenceBadge: {
+    backgroundColor: 'rgba(124,111,224,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(124,111,224,0.3)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  geofenceBadgeText: {
+    fontFamily: Fonts.medium,
+    fontSize: 11,
+    color: '#7c6fe0',
+  },
 });

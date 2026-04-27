@@ -24,6 +24,11 @@ export interface Task {
   subtasks: Subtask[];
   people?: string[];
   createdAt: string;
+  // Location data for geolocation features
+  locationName?: string;
+  locationLat?: number;
+  locationLng?: number;
+  locationAddress?: string;
 }
 
 export interface Project {

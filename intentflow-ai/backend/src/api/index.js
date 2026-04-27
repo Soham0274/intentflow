@@ -12,6 +12,7 @@ const automationRoutes = require('./automation/index');
 const authRoutes = require('./auth/index');
 const usersRoutes = require('./users/index');
 const calendarRoutes = require('./calendar/index');
+const locationRoutes = require('./location/index');
 const healthRoutes = require('./health/index');
 const docsRoutes = require('./docs');
 
@@ -22,6 +23,7 @@ router.use('/automation', automationRoutes);
 router.use('/auth', authRoutes);
 router.use('/users', usersRoutes);
 router.use('/calendar', calendarRoutes);
+router.use('/location', locationRoutes);
 router.use('/health', healthRoutes);
 router.use('/', docsRoutes);
 

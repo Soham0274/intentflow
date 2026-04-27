@@ -25,6 +25,7 @@ import { AuthProvider, useAuth } from '../store/AuthContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { AppProvider } from '../context/AppContext';
 import { useAuthCallback } from '../hooks/useAuthCallback';
+import { Platform } from 'react-native';
 
 const queryClient = new QueryClient();
 

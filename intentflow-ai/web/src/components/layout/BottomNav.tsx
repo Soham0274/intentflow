@@ -42,7 +42,7 @@ export function BottomNav() {
   const pendingCount = useHITLStore((s) => s.pendingCount)
 
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-950/90 backdrop-blur-xl border-t border-white/[0.06]">
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/90 border-t border-slate-200/80 backdrop-blur-xl dark:bg-slate-950/90 dark:border-white/[0.06]">
       <div className="flex items-center justify-around py-2">
         {navItems.map((item) => {
           const isActive = pathname?.startsWith(item.href)
@@ -52,7 +52,7 @@ export function BottomNav() {
               href={item.href}
               className={cn(
                 'relative flex flex-col items-center gap-1 px-4 py-1.5 rounded-xl transition-all duration-200',
-                isActive ? 'text-violet-400' : 'text-slate-500 hover:text-slate-300'
+                isActive ? 'text-violet-600 dark:text-violet-400' : 'text-slate-500 hover:text-slate-900 dark:text-slate-500 dark:hover:text-slate-300'
               )}
             >
               {item.icon}
@@ -63,7 +63,7 @@ export function BottomNav() {
                 </span>
               )}
               {isActive && (
-                <span className="absolute -bottom-2 w-4 h-0.5 rounded-full bg-violet-400" />
+                <span className="absolute -bottom-2 w-4 h-0.5 rounded-full bg-violet-600 dark:bg-violet-400" />
               )}
             </Link>
           )

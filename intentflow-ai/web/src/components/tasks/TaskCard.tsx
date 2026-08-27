@@ -25,7 +25,7 @@ export function TaskCard({ task }: TaskCardProps) {
                 {task.priority}
               </span>
             </div>
-            <h3 className="text-white font-medium text-sm group-hover:text-violet-300 transition-colors truncate">
+            <h3 className="text-slate-900 dark:text-white font-medium text-sm group-hover:text-violet-600 dark:group-hover:text-violet-300 transition-colors truncate">
               {task.title}
             </h3>
             {task.description && (
@@ -42,7 +42,7 @@ export function TaskCard({ task }: TaskCardProps) {
             {task.tags && task.tags.length > 0 && (
               <div className="flex gap-1">
                 {task.tags.slice(0, 2).map((tag) => (
-                  <span key={tag} className="text-[10px] text-slate-600 bg-white/5 px-1.5 py-0.5 rounded">
+                  <span key={tag} className="text-[10px] text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-white/5 px-1.5 py-0.5 rounded">
                     {tag}
                   </span>
                 ))}

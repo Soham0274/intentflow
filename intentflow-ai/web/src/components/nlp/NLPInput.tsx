@@ -44,7 +44,7 @@ export function NLPInput() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="What do you need to do? e.g. 'remind me to submit report by Friday'"
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30 resize-none transition-all"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-100/50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 dark:bg-white/5 dark:border-white/10 dark:text-white dark:placeholder:text-slate-500 resize-none transition-all"
             rows={2}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {

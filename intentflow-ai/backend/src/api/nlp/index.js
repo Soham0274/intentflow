@@ -14,7 +14,12 @@ const hitlRepository = require('../../repositories/hitl.repository');
 
 // Schema
 const extractSchema = z.object({ text: z.string().min(3).max(2000) });
-const parseSchema = z.object({ text: z.string().min(3).max(500) });
+const parseSchema = z.object({
+  text: z.string().min(3).max(2000).optional(),
+  input: z.string().min(3).max(2000).optional()
+}).refine(data => data.text || data.input, {
+  message: "Either 'text' or 'input' must be provided"
+});
 const validateSchema = z.object({
   task: z.object({
     title: z.string().min(1),
@@ -30,8 +35,29 @@ router.post('/extract', requireAuth, nlpLimiter, validate(extractSchema), asyncH
 }));
 
 router.post('/parse', requireAuth, nlpLimiter, validate(parseSchema), asyncHandler(async (req, res) => {
-  const result = await nlpService.parseIntent(req.body.text);
-  success(res, result);
+  const text = req.body.text || req.body.input;
+  const result = await nlpService.extractTasks(text, req.user.id, false);
+  const firstTask = result.tasks?.[0];
+  
+  if (firstTask) {
+    const parsed = {
+      title: firstTask.title,
+      description: firstTask.description || null,
+      due_date: firstTask.due_date || null,
+      priority: firstTask.priority || 'medium',
+      requires_hitl: (firstTask.confidence_score ?? 100) < 50,
+      confidence: (firstTask.confidence_score ?? 100) / 100,
+      intent: 'create_task'
+    };
+    success(res, parsed);
+  } else {
+    success(res, {
+      title: text,
+      requires_hitl: false,
+      confidence: 1.0,
+      intent: 'unknown'
+    });
+  }
 }));
 
 router.post('/validate', requireAuth, nlpLimiter, validate(validateSchema), asyncHandler(async (req, res) => {

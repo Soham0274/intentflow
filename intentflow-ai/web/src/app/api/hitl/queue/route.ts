@@ -8,7 +8,7 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return apiError('Unauthorized', 401)
 
-    const response = await proxyToBackend('/hitl/queue', {
+    const response = await proxyToBackend('/hitl/pending', {
       token: (await supabase.auth.getSession()).data.session?.access_token,
     })
     const data = await response.json()

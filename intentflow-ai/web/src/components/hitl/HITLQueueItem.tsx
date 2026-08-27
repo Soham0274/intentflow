@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { useResolveHITL } from '@/hooks/useHITL'
 import { useHITLStore } from '@/store/hitlStore'
-import { cn, capitalize, timeAgo } from '@/lib/utils'
+import { cn, capitalize, timeAgo, getPriorityColor } from '@/lib/utils'
 import type { HITLItem } from '@/types/hitl'
 
 interface HITLQueueItemProps {
@@ -54,25 +54,23 @@ export function HITLQueueItem({ item }: HITLQueueItemProps) {
             </Badge>
           )}
         </div>
-        <span className="text-[11px] text-slate-600">{timeAgo(item.created_at)}</span>
+        <span className="text-[11px] text-slate-500 dark:text-slate-600">{timeAgo(item.created_at)}</span>
       </div>
 
       {/* Proposed data */}
       {item.proposed_data && (
-        <div className="rounded-xl bg-white/[0.02] border border-white/[0.04] p-3 mb-3 space-y-1.5">
-          <h4 className="text-sm font-medium text-white">
+        <div className="rounded-xl bg-slate-100/50 border border-slate-200/80 dark:bg-white/[0.02] dark:border-white/[0.04] p-3 mb-3 space-y-1.5">
+          <h4 className="text-sm font-medium text-slate-900 dark:text-white">
             {item.proposed_data.title || 'Untitled'}
           </h4>
           {item.proposed_data.description && (
-            <p className="text-xs text-slate-400">{item.proposed_data.description}</p>
+            <p className="text-xs text-slate-600 dark:text-slate-400">{item.proposed_data.description}</p>
           )}
           <div className="flex gap-2">
             {item.proposed_data.priority && (
               <span className={cn(
                 'px-2 py-0.5 rounded text-[10px] font-semibold border',
-                item.proposed_data.priority === 'high' ? 'text-rose-400 bg-rose-500/10 border-rose-500/20' :
-                item.proposed_data.priority === 'medium' ? 'text-amber-400 bg-amber-500/10 border-amber-500/20' :
-                'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                getPriorityColor(item.proposed_data.priority)
               )}>
                 {capitalize(item.proposed_data.priority)}
               </span>
@@ -84,7 +82,7 @@ export function HITLQueueItem({ item }: HITLQueueItemProps) {
       {/* AI reasoning */}
       {item.ai_reasoning && (
         <div className="rounded-lg bg-violet-500/5 border border-violet-500/10 p-2.5 mb-3">
-          <p className="text-xs text-violet-300">
+          <p className="text-xs text-violet-700 dark:text-violet-300">
             <span className="font-medium">AI reasoning:</span> {item.ai_reasoning}
           </p>
         </div>
@@ -98,7 +96,7 @@ export function HITLQueueItem({ item }: HITLQueueItemProps) {
             placeholder="Reason for rejection (optional)..."
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-rose-500/30"
+            className="w-full px-3 py-2 rounded-lg bg-slate-100 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-rose-500/30 dark:bg-white/5 dark:border-white/10 dark:text-white dark:placeholder:text-slate-500"
           />
         )}
         <div className="flex gap-2 justify-end">

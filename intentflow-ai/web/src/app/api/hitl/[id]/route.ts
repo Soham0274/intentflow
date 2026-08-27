@@ -14,9 +14,24 @@ export async function POST(
     if (!user) return apiError('Unauthorized', 401)
 
     const body = await req.json()
-    const response = await proxyToBackend(`/hitl/${id}`, {
+    const { action, reason } = body
+
+    let backendPath = ''
+    let backendBody: Record<string, unknown> = {}
+
+    if (action === 'approve') {
+      backendPath = '/hitl/confirm'
+      backendBody = { hitlId: id }
+    } else if (action === 'reject') {
+      backendPath = '/hitl/reject'
+      backendBody = { hitlId: id, reason }
+    } else {
+      return apiError('Invalid action', 400)
+    }
+
+    const response = await proxyToBackend(backendPath, {
       method: 'POST',
-      body,
+      body: backendBody,
       token: (await supabase.auth.getSession()).data.session?.access_token,
     })
     const data = await response.json()

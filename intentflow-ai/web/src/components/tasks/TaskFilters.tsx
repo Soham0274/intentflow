@@ -34,7 +34,7 @@ export function TaskFilters() {
           placeholder="Search tasks..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30 transition-all"
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 dark:bg-white/5 dark:border-white/10 dark:text-white dark:placeholder:text-slate-500 transition-all"
         />
       </div>
 
@@ -47,8 +47,8 @@ export function TaskFilters() {
             className={cn(
               'px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200',
               filterStatus === f.value
-                ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
-                : 'bg-white/5 text-slate-400 border border-transparent hover:bg-white/10 hover:text-slate-300'
+                ? 'bg-violet-500/10 text-violet-700 border border-violet-500/20 dark:bg-violet-500/20 dark:text-violet-300 dark:border-violet-500/30'
+                : 'bg-slate-100 text-slate-500 border border-transparent hover:bg-slate-200 hover:text-slate-900 dark:bg-white/5 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-300'
             )}
           >
             {f.label}
@@ -65,8 +65,8 @@ export function TaskFilters() {
             className={cn(
               'px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200',
               filterPriority === f.value
-                ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
-                : 'bg-white/5 text-slate-400 border border-transparent hover:bg-white/10 hover:text-slate-300'
+                ? 'bg-violet-500/10 text-violet-700 border border-violet-500/20 dark:bg-violet-500/20 dark:text-violet-300 dark:border-violet-500/30'
+                : 'bg-slate-100 text-slate-500 border border-transparent hover:bg-slate-200 hover:text-slate-900 dark:bg-white/5 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-300'
             )}
           >
             {f.label}

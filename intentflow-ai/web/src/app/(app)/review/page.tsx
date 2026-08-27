@@ -11,7 +11,7 @@ export default function ReviewPage() {
     <div className="space-y-6 animate-fade-in">
       {/* Page header */}
       <div>
-        <h1 className="text-2xl font-bold text-white">Review Queue</h1>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Review Queue</h1>
         <p className="text-sm text-slate-500 mt-1">
           AI actions that need your approval before proceeding
         </p>

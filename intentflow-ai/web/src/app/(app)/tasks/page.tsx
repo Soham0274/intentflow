@@ -32,7 +32,7 @@ export default function TasksPage() {
     <div className="space-y-6 animate-fade-in">
       {/* Page header */}
       <div>
-        <h1 className="text-2xl font-bold text-white">Tasks</h1>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Tasks</h1>
         <p className="text-sm text-slate-500 mt-1">
           Manage your tasks with AI-powered natural language input
         </p>

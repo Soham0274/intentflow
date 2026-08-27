@@ -54,12 +54,12 @@ export function capitalize(str: string): string {
 export function getPriorityColor(priority: string): string {
   switch (priority) {
     case 'high':
-      return 'text-rose-400 bg-rose-500/10 border-rose-500/20'
+      return 'text-rose-700 bg-rose-500/10 border-rose-500/20 dark:text-rose-400'
     case 'medium':
-      return 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+      return 'text-amber-700 bg-amber-500/10 border-amber-500/20 dark:text-amber-400'
     case 'low':
-      return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+      return 'text-emerald-700 bg-emerald-500/10 border-emerald-500/20 dark:text-emerald-400'
     default:
-      return 'text-slate-400 bg-slate-500/10 border-slate-500/20'
+      return 'text-slate-700 bg-slate-500/10 border-slate-500/20 dark:text-slate-400'
   }
 }

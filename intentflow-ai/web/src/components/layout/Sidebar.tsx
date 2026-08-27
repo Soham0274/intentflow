@@ -42,17 +42,17 @@ export function Sidebar() {
   const pendingCount = useHITLStore((s) => s.pendingCount)
 
   return (
-    <aside className="hidden lg:flex flex-col w-64 h-screen bg-slate-950/50 border-r border-white/[0.06] backdrop-blur-xl">
+    <aside className="hidden lg:flex flex-col w-64 h-screen bg-slate-50/50 border-r border-slate-200/80 backdrop-blur-xl dark:bg-slate-950/50 dark:border-white/[0.06]">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-6 py-5 border-b border-white/[0.06]">
+      <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-200/80 dark:border-white/[0.06]">
         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
             <path d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
         </div>
         <div>
-          <h1 className="text-base font-bold text-white tracking-tight">IntentFlow</h1>
-          <p className="text-[10px] text-violet-400 font-medium tracking-widest uppercase">AI</p>
+          <h1 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">IntentFlow</h1>
+          <p className="text-[10px] text-violet-600 dark:text-violet-400 font-medium tracking-widest uppercase">AI</p>
         </div>
       </div>
 
@@ -67,11 +67,11 @@ export function Sidebar() {
               className={cn(
                 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
                 isActive
-                  ? 'bg-violet-500/10 text-violet-300 border border-violet-500/20 shadow-sm shadow-violet-500/5'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  ? 'bg-violet-500/10 text-violet-700 border border-violet-500/20 shadow-sm shadow-violet-500/5 dark:text-violet-300'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-900/5 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/5'
               )}
             >
-              <span className={cn(isActive && 'text-violet-400')}>{item.icon}</span>
+              <span className={cn(isActive ? 'text-violet-600 dark:text-violet-400' : '')}>{item.icon}</span>
               {item.name}
               {item.badge && pendingCount > 0 && (
                 <span className="ml-auto flex items-center justify-center w-5 h-5 rounded-full bg-rose-500/90 text-[10px] font-bold text-white animate-pulse">
@@ -84,7 +84,7 @@ export function Sidebar() {
       </nav>
 
       {/* Status */}
-      <div className="px-4 py-4 border-t border-white/[0.06]">
+      <div className="px-4 py-4 border-t border-slate-200/80 dark:border-white/[0.06]">
         <div className="flex items-center gap-2 text-xs text-slate-500">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           System Online

@@ -19,7 +19,11 @@
         "NSLocationWhenInUseUsageDescription": "IntentFlow uses your location to remind you about tasks when you're near relevant locations like grocery stores or pharmacies.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "IntentFlow monitors your location in the background to proactively notify you about nearby tasks. This helps you remember to pick up items or complete errands while you're out.",
         "NSLocationAlwaysUsageDescription": "IntentFlow needs background location access to send you timely reminders when you approach locations relevant to your tasks.",
-        "UIBackgroundModes": ["location", "fetch", "remote-notification"]
+        "UIBackgroundModes": [
+          "location",
+          "fetch",
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -55,7 +59,8 @@
           "locationAlwaysAndWhenInUsePermission": "IntentFlow needs background location access to send you timely reminders when you approach locations relevant to your tasks.",
           "isAndroidBackgroundLocationEnabled": true
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

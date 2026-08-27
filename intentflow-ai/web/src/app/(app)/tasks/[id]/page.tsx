@@ -87,7 +87,7 @@ export default function TaskDetailPage({
       {/* Back button */}
       <button
         onClick={() => router.back()}
-        className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors"
+        className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-950 dark:text-slate-400 dark:hover:text-white transition-colors"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M19 12H5M12 19l-7-7 7-7" />
@@ -131,62 +131,62 @@ export default function TaskDetailPage({
           <div className="space-y-4">
             <Input label="Title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-slate-300">Description</label>
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Description</label>
               <textarea
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
                 rows={4}
-                className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
+                className="w-full rounded-xl bg-slate-100 border border-slate-200 px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none dark:bg-white/5 dark:border-white/10 dark:text-white dark:placeholder:text-slate-500"
               />
             </div>
             <div className="flex gap-4">
               <div className="flex-1">
-                <label className="text-sm font-medium text-slate-300 block mb-1.5">Priority</label>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300 block mb-1.5">Priority</label>
                 <select
                   value={editPriority}
                   onChange={(e) => setEditPriority(e.target.value as TaskPriority)}
-                  className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                  className="w-full rounded-xl bg-slate-100 border border-slate-200 px-4 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500/50 dark:bg-slate-900 dark:border-white/10 dark:text-white"
                 >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
+                  <option value="low" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">Low</option>
+                  <option value="medium" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">Medium</option>
+                  <option value="high" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">High</option>
                 </select>
               </div>
               <div className="flex-1">
-                <label className="text-sm font-medium text-slate-300 block mb-1.5">Status</label>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300 block mb-1.5">Status</label>
                 <select
                   value={editStatus}
                   onChange={(e) => setEditStatus(e.target.value as TaskStatus)}
-                  className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                  className="w-full rounded-xl bg-slate-100 border border-slate-200 px-4 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500/50 dark:bg-slate-900 dark:border-white/10 dark:text-white"
                 >
-                  <option value="pending">Pending</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
+                  <option value="pending" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">Pending</option>
+                  <option value="in_progress" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">In Progress</option>
+                  <option value="completed" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">Completed</option>
+                  <option value="cancelled" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">Cancelled</option>
                 </select>
               </div>
             </div>
           </div>
         ) : (
           <div className="space-y-3">
-            <h1 className="text-xl font-semibold text-white">{task.title}</h1>
-            {task.description && <p className="text-sm text-slate-400 leading-relaxed">{task.description}</p>}
+            <h1 className="text-xl font-semibold text-slate-900 dark:text-white">{task.title}</h1>
+            {task.description && <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{task.description}</p>}
           </div>
         )}
 
         {/* Metadata */}
-        <div className="grid grid-cols-2 gap-3 pt-3 border-t border-white/[0.04]">
+        <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-200/80 dark:border-white/[0.04]">
           <div>
-            <span className="text-[10px] text-slate-600 uppercase tracking-wider">Due Date</span>
-            <p className="text-sm text-slate-300 mt-0.5">{formatDate(task.due_date)}</p>
+            <span className="text-[10px] text-slate-500 dark:text-slate-600 uppercase tracking-wider">Due Date</span>
+            <p className="text-sm text-slate-700 dark:text-slate-300 mt-0.5">{formatDate(task.due_date)}</p>
           </div>
           <div>
-            <span className="text-[10px] text-slate-600 uppercase tracking-wider">Created</span>
-            <p className="text-sm text-slate-300 mt-0.5">{formatDate(task.created_at)}</p>
+            <span className="text-[10px] text-slate-500 dark:text-slate-600 uppercase tracking-wider">Created</span>
+            <p className="text-sm text-slate-700 dark:text-slate-300 mt-0.5">{formatDate(task.created_at)}</p>
           </div>
           {task.tags && task.tags.length > 0 && (
             <div className="col-span-2">
-              <span className="text-[10px] text-slate-600 uppercase tracking-wider">Tags</span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-600 uppercase tracking-wider">Tags</span>
               <div className="flex gap-1.5 mt-1">
                 {task.tags.map((tag) => (
                   <Badge key={tag} variant="violet" size="sm">{tag}</Badge>
@@ -196,8 +196,8 @@ export default function TaskDetailPage({
           )}
           {task.nlp_raw_input && (
             <div className="col-span-2">
-              <span className="text-[10px] text-slate-600 uppercase tracking-wider">Original Input</span>
-              <p className="text-xs text-slate-500 mt-0.5 font-mono bg-white/[0.02] rounded-lg p-2">
+              <span className="text-[10px] text-slate-500 dark:text-slate-600 uppercase tracking-wider">Original Input</span>
+              <p className="text-xs text-slate-600 dark:text-slate-500 mt-0.5 font-mono bg-slate-100/50 border border-slate-200/50 dark:bg-white/[0.02] dark:border-transparent rounded-lg p-2">
                 &ldquo;{task.nlp_raw_input}&rdquo;
               </p>
             </div>

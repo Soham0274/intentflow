@@ -71,10 +71,10 @@ export function NLPStreamDisplay({
             )}
           </div>
 
-          <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 space-y-2">
-            <h4 className="text-sm font-medium text-white">{parsedResult.title}</h4>
+          <div className="rounded-xl bg-slate-100/50 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/[0.06] p-3 space-y-2">
+            <h4 className="text-sm font-medium text-slate-900 dark:text-white">{parsedResult.title}</h4>
             {parsedResult.description && (
-              <p className="text-xs text-slate-400">{parsedResult.description}</p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">{parsedResult.description}</p>
             )}
             <div className="flex flex-wrap gap-2">
               {parsedResult.priority && (
@@ -83,11 +83,11 @@ export function NLPStreamDisplay({
                 </span>
               )}
               {parsedResult.due_date && (
-                <span className="text-[10px] text-slate-500 bg-white/5 px-2 py-0.5 rounded">
+                <span className="text-[10px] text-slate-600 dark:text-slate-400 bg-slate-200/50 dark:bg-white/5 px-2 py-0.5 rounded">
                   📅 {formatDate(parsedResult.due_date)}
                 </span>
               )}
-              <span className="text-[10px] text-slate-500 bg-white/5 px-2 py-0.5 rounded">
+              <span className="text-[10px] text-slate-600 dark:text-slate-400 bg-slate-200/50 dark:bg-white/5 px-2 py-0.5 rounded">
                 {parsedResult.intent}
               </span>
             </div>
@@ -106,7 +106,7 @@ export function NLPStreamDisplay({
 
       {/* Raw streaming output */}
       {!parsedResult && output && (
-        <p className="text-sm text-slate-300 font-mono">{output}</p>
+        <p className="text-sm text-slate-700 dark:text-slate-300 font-mono">{output}</p>
       )}
     </div>
   )

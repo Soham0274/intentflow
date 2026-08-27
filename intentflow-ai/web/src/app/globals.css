@@ -22,6 +22,12 @@ body {
 }
 
 body {
+  background: #f8fafc;
+  color: #0f172a;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.dark body {
   background: #050510;
   color: #e2e8f0;
 }
@@ -35,10 +41,16 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.08);
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 23, 42, 0.15);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.15);
 }
 
@@ -92,9 +104,14 @@ body {
 
 /* ─── Glass effect ─── */
 .glass {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.dark .glass {
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 

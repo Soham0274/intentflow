@@ -10,12 +10,12 @@ interface BadgeProps {
 }
 
 const variantStyles = {
-  default: 'bg-slate-500/10 text-slate-300 border-slate-500/20',
-  success: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-  warning: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  danger: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
-  info: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
-  violet: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
+  default: 'bg-slate-500/10 text-slate-700 border-slate-500/20 dark:text-slate-300',
+  success: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-400',
+  warning: 'bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-400',
+  danger: 'bg-rose-500/10 text-rose-700 border-rose-500/20 dark:text-rose-400',
+  info: 'bg-sky-500/10 text-sky-700 border-sky-500/20 dark:text-sky-400',
+  violet: 'bg-violet-500/10 text-violet-700 border-violet-500/20 dark:text-violet-400',
 }
 
 export function Badge({ children, variant = 'default', size = 'sm', className, pulse }: BadgeProps) {
